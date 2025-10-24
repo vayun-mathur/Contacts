@@ -63,7 +63,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 } else {
-                    if(intent.action == Intent.ACTION_PICK) {
+                    if(intent.action == Intent.ACTION_PICK || intent.action == Intent.ACTION_GET_CONTENT) {
                         ContactListPick(intent.type!!) {
                             val intent = Intent().apply {
                                 data = it
