@@ -1,6 +1,7 @@
 package com.vayunmathur.contacts
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -62,16 +63,33 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 } else {
-                    val navController = rememberNavController()
-                    NavHost(navController, startDestination = ContactsScreen) {
-                        composable<ContactsScreen> {
-                            ContactList(navController)
+                    if(intent.action == Intent.ACTION_PICK) {
+                        ContactListPick(intent.type!!) {
+                            val intent = Intent().apply {
+                                data = it
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            setResult(RESULT_OK, intent)
+                            finish()
                         }
-                        composable<ContactDetailsScreen> {
-                            ContactDetailsPage(navController, Json.decodeFromString(it.toRoute<ContactDetailsScreen>().contact))
-                        }
-                        composable<EditContactScreen> {
-                            EditContactPage(navController, Json.decodeFromString(it.toRoute<ContactDetailsScreen>().contact))
+                    } else {
+                        val navController = rememberNavController()
+                        NavHost(navController, startDestination = ContactsScreen) {
+                            composable<ContactsScreen> {
+                                ContactList(navController)
+                            }
+                            composable<ContactDetailsScreen> {
+                                ContactDetailsPage(
+                                    navController,
+                                    Json.decodeFromString(it.toRoute<ContactDetailsScreen>().contact)
+                                )
+                            }
+                            composable<EditContactScreen> {
+                                EditContactPage(
+                                    navController,
+                                    Json.decodeFromString(it.toRoute<ContactDetailsScreen>().contact)
+                                )
+                            }
                         }
                     }
                 }

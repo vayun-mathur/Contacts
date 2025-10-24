@@ -2,6 +2,8 @@ package com.vayunmathur.contacts
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
+import android.provider.ContactsContract
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -80,6 +82,22 @@ fun ContactList(navController: NavController) {
         .groupBy { it.name.first().uppercaseChar() }
         .toSortedMap()
 
+    val onClick = { contact: Contact ->
+        if (isInSelectionMode) {
+            val newSelection = if (selectedContactIds.contains(contact.id)) {
+                selectedContactIds - contact.id
+            } else {
+                selectedContactIds + contact.id
+            }
+            if (newSelection.isEmpty()) {
+                isInSelectionMode = false
+            }
+            selectedContactIds = newSelection
+        } else {
+            navController.navigate(ContactDetailsScreen(Json.encodeToString(contact)))
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -113,33 +131,14 @@ fun ContactList(navController: NavController) {
             contentPadding = PaddingValues(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // --- Favorites Section ---
             if (favorites.isNotEmpty()) {
-                item {
-                    FavoritesHeader()
-                }
+                item { FavoritesHeader() }
                 // Add the list of favorite contacts
                 items(favorites, key = { it.id }) { contact ->
-                    val isSelected = selectedContactIds.contains(contact.id)
-
                     ContactItem(
                         contact = contact,
-                        isSelected = isSelected,
-                        onClick = {
-                            if (isInSelectionMode) {
-                                val newSelection = if (isSelected) {
-                                    selectedContactIds - contact.id
-                                } else {
-                                    selectedContactIds + contact.id
-                                }
-                                if (newSelection.isEmpty()) {
-                                    isInSelectionMode = false
-                                }
-                                selectedContactIds = newSelection
-                            } else {
-                                navController.navigate(ContactDetailsScreen(Json.encodeToString(contact)))
-                            }
-                        },
+                        isSelected = selectedContactIds.contains(contact.id),
+                        onClick = { onClick(contact) },
                         onLongClick = {
                             isInSelectionMode = true
                             selectedContactIds = selectedContactIds + contact.id
@@ -148,32 +147,13 @@ fun ContactList(navController: NavController) {
                 }
             }
 
-            // --- Alphabetical Sections ---
             groupedContacts.forEach { (letter, contactsInGroup) ->
-                item {
-                    LetterHeader(letter)
-                }
+                item { LetterHeader(letter) }
                 items(contactsInGroup, key = { it.id }) { contact ->
-                    val isSelected = selectedContactIds.contains(contact.id)
-
                     ContactItem(
                         contact = contact,
-                        isSelected = isSelected,
-                        onClick = {
-                            if (isInSelectionMode) {
-                                val newSelection = if (isSelected) {
-                                    selectedContactIds - contact.id
-                                } else {
-                                    selectedContactIds + contact.id
-                                }
-                                if (newSelection.isEmpty()) {
-                                    isInSelectionMode = false
-                                }
-                                selectedContactIds = newSelection
-                            } else {
-                                navController.navigate(ContactDetailsScreen(Json.encodeToString(contact)))
-                            }
-                        },
+                        isSelected = selectedContactIds.contains(contact.id),
+                        onClick = { onClick(contact) },
                         onLongClick = {
                             isInSelectionMode = true
                             selectedContactIds = selectedContactIds + contact.id
@@ -182,6 +162,56 @@ fun ContactList(navController: NavController) {
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ContactListPick(mimeType: String, onClick: (Uri) -> Unit) {
+    val context = LocalContext.current
+    var contacts by remember { mutableStateOf(emptyList<Contact>()) }
+
+    LaunchedEffect(Unit) {
+        contacts = Contact.getAllContacts(context).sortedBy { it.name }
+    }
+
+    val (favorites, otherContacts) = contacts.partition { it.isFavorite }
+
+    val groupedContacts: SortedMap<Char, List<Contact>> = otherContacts
+        .groupBy { it.name.first().uppercaseChar() }
+        .toSortedMap()
+
+    Scaffold(topBar = { TopAppBar({ Text("Contacts") }) }) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(paddingValues),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (favorites.isNotEmpty()) {
+                item { FavoritesHeader() }
+                items(favorites, key = { it.id }) { contact ->
+                    ContactItemPick(contact, mimeType, onClick)
+                }
+            }
+
+            groupedContacts.forEach { (letter, contactsInGroup) ->
+                item { LetterHeader(letter) }
+                items(contactsInGroup, key = { it.id }) { contact ->
+                    ContactItemPick(contact, mimeType, onClick)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ContactItemPick(contact: Contact, mimeType: String, onClick: (Uri) -> Unit) {
+    if(mimeType == ContactsContract.Contacts.CONTENT_ITEM_TYPE) {
+        ContactItem(contact, false, { onClick(Uri.withAppendedPath(
+            ContactsContract.Contacts.CONTENT_URI,
+            contact.id.toString()
+        )) }, onLongClick = {})
+    } else {
     }
 }
 
