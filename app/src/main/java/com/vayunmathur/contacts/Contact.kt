@@ -33,6 +33,7 @@ typealias CDKStructuredPostal = ContactsContract.CommonDataKinds.StructuredPosta
 typealias CDKEvent = ContactsContract.CommonDataKinds.Event
 
 interface ContactDetail<T: ContactDetail<T>> {
+    val id: Long
     val type: Int
     val value: String
     fun withType(type: Int): T
@@ -43,51 +44,51 @@ interface ContactDetail<T: ContactDetail<T>> {
         @OptIn(ExperimentalTime::class)
         inline fun <reified T: ContactDetail<T>> default(): T {
             return when (T::class) {
-                PhoneNumber::class -> PhoneNumber("", CDKPhone.TYPE_MOBILE)
-                Email::class -> Email("", CDKEmail.TYPE_HOME)
-                Address::class -> Address("", CDKStructuredPostal.TYPE_HOME)
-                Event::class -> Event(Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date, CDKEvent.TYPE_BIRTHDAY)
+                PhoneNumber::class -> PhoneNumber(0, "", CDKPhone.TYPE_MOBILE)
+                Email::class -> Email(0, "", CDKEmail.TYPE_HOME)
+                Address::class -> Address(0, "", CDKStructuredPostal.TYPE_HOME)
+                Event::class -> Event(0, Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date, CDKEvent.TYPE_BIRTHDAY)
                 else -> throw IllegalArgumentException("Unknown type")
             } as T
         }
     }
 }
 
-data class PhoneNumber(val number: String, override val type: Int): ContactDetail<PhoneNumber> {
+data class PhoneNumber(override val id: Long, val number: String, override val type: Int): ContactDetail<PhoneNumber> {
     override val value: String
         get() = number
 
-    override fun withType(type: Int) = PhoneNumber(number, type)
-    override fun withValue(value: String) = PhoneNumber(value, type)
+    override fun withType(type: Int) = PhoneNumber(id, number, type)
+    override fun withValue(value: String) = PhoneNumber(id, value, type)
 
     override fun typeString(context: Context) = CDKPhone.getTypeLabel(context.resources, type, "").toString()
 }
-data class Email(val address: String, override val type: Int): ContactDetail<Email> {
+data class Email(override val id: Long, val address: String, override val type: Int): ContactDetail<Email> {
     override val value: String
         get() = address
 
-    override fun withType(type: Int) = Email(address, type)
-    override fun withValue(value: String) = Email(value, type)
+    override fun withType(type: Int) = Email(id, address, type)
+    override fun withValue(value: String) = Email(id, value, type)
 
     override fun typeString(context: Context) = CDKEmail.getTypeLabel(context.resources, type, "").toString()
 }
-data class Address(val formattedAddress: String, override val type: Int): ContactDetail<Address> {
+data class Address(override val id: Long, val formattedAddress: String, override val type: Int): ContactDetail<Address> {
     override val value: String
         get() = formattedAddress
 
-    override fun withType(type: Int) = Address(formattedAddress, type)
-    override fun withValue(value: String) = Address(value, type)
+    override fun withType(type: Int) = Address(id, formattedAddress, type)
+    override fun withValue(value: String) = Address(id, value, type)
 
     override fun typeString(context: Context) = CDKStructuredPostal.getTypeLabel(context.resources, type, "").toString()
 }
 
 
-data class Event(val startDate: LocalDate, override val type: Int): ContactDetail<Event> {
+data class Event(override val id: Long, val startDate: LocalDate, override val type: Int): ContactDetail<Event> {
     override val value: String
         get() = startDate.format(LocalDate.Formats.ISO)
 
-    override fun withType(type: Int) = Event(startDate, type)
-    override fun withValue(value: String) = Event(LocalDate.parse(value), type)
+    override fun withType(type: Int) = Event(id, startDate, type)
+    override fun withValue(value: String) = Event(id, LocalDate.parse(value), type)
 
     override fun typeString(context: Context) = CDKEvent.getTypeLabel(context.resources, type, "").toString()
 }
@@ -376,9 +377,10 @@ fun Contact.getDetails(context: Context): ContactDetails {
         null
     )?.use { cursor ->
         while (cursor.moveToNext()) {
+            val id = cursor.getLong(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone._ID))
             val number = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER))
             val type = cursor.getInt(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.TYPE))
-            phoneNumbers.add(PhoneNumber(number, type))
+            phoneNumbers.add(PhoneNumber(id, number, type))
         }
     }
 
@@ -392,9 +394,10 @@ fun Contact.getDetails(context: Context): ContactDetails {
         null
     )?.use { cursor ->
         while (cursor.moveToNext()) {
+            val id = cursor.getLong(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Email._ID))
             val email = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Email.ADDRESS))
             val type = cursor.getInt(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Email.TYPE))
-            emails.add(Email(email, type))
+            emails.add(Email(id, email, type))
         }
     }
 
@@ -408,9 +411,10 @@ fun Contact.getDetails(context: Context): ContactDetails {
         null
     )?.use { cursor ->
         while (cursor.moveToNext()) {
+            val id = cursor.getLong(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredPostal._ID))
             val address = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredPostal.FORMATTED_ADDRESS))
             val type = cursor.getInt(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredPostal.TYPE))
-            addresses.add(Address(address, type))
+            addresses.add(Address(id, address, type))
         }
     }
 
@@ -429,7 +433,7 @@ fun Contact.getDetails(context: Context): ContactDetails {
         while (cursor.moveToNext()) {
             val date = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Event.START_DATE))
             val type = cursor.getInt(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Event.TYPE))
-            dates.add(Event(LocalDate.parse(date), type))
+            dates.add(Event(0,LocalDate.parse(date), type))
         }
     }
 

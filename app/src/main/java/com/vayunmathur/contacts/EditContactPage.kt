@@ -108,10 +108,10 @@ fun EditContactPage(navController: NavController, contact: Contact) {
         addresses.addAll(details.addresses)
 
         if (phoneNumbers.isEmpty()) {
-            phoneNumbers.add(PhoneNumber("", CDKPhone.TYPE_MOBILE))
+            phoneNumbers.add(PhoneNumber(0, "", CDKPhone.TYPE_MOBILE))
         }
         if (emails.isEmpty()) {
-            emails.add(Email("", CDKEmail.TYPE_HOME))
+            emails.add(Email(0, "", CDKEmail.TYPE_HOME))
         }
     }
 

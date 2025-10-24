@@ -8,9 +8,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -212,6 +214,25 @@ fun ContactItemPick(contact: Contact, mimeType: String, onClick: (Uri) -> Unit) 
             contact.id.toString()
         )) }, onLongClick = {})
     } else {
+        val details = contact.getDetails(LocalContext.current)
+        val relevantList = when(mimeType) {
+            ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE -> details.emails
+            ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE -> details.phoneNumbers
+            ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE -> details.addresses
+            else -> throw IllegalArgumentException("Unsupported MIME type: $mimeType")
+        }
+        val baseURI = when(mimeType) {
+            ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE -> ContactsContract.CommonDataKinds.Email.CONTENT_URI
+            ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE -> ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+            ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE -> ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_URI
+            else -> throw IllegalArgumentException("Unsupported MIME type: $mimeType")
+        }
+        ContactItem(contact, false, {  }, onLongClick = {}, dropdownList = relevantList.map { it.value }, dropdownListClick = { index ->
+            onClick(Uri.withAppendedPath(
+                baseURI,
+                relevantList[index].id.toString()
+            ))
+        })
     }
 }
 
@@ -265,68 +286,89 @@ fun ContactItem(
     contact: Contact,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    dropdownList: List<String>? = null,
+    dropdownListClick: (Int) -> Unit = {}
 ) {
-    ListItem(
-        modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            ),
-        headlineContent = {
-            Text(
-                text = contact.name,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium
-            )
-        },
-        leadingContent = {
-            Box(
-                modifier = Modifier.size(40.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                contact.photo?.let {
-                    val bitmap by remember(it) {
-                        mutableStateOf<Bitmap>(BitmapFactory.decodeByteArray(Base64.decode(it), 0, Base64.decode(it).size))
-                    }
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = "${contact.name} photo",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                    )
-                }
-                if (contact.photo == null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                color = getAvatarColor(contact.id),
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = contact.name.first().uppercase(),
-                            color = Color.White,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold
+    val modifier = if (dropdownList == null) {
+        Modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
+    } else {
+        Modifier
+    }
+    Column {
+        ListItem(
+            modifier = modifier
+                .clip(RoundedCornerShape(16.dp)),
+            headlineContent = {
+                Text(
+                    text = contact.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+            },
+            leadingContent = {
+                Box(
+                    modifier = Modifier.size(40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    contact.photo?.let {
+                        val bitmap by remember(it) {
+                            mutableStateOf<Bitmap>(
+                                BitmapFactory.decodeByteArray(
+                                    Base64.decode(it),
+                                    0,
+                                    Base64.decode(it).size
+                                )
+                            )
+                        }
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "${contact.name} photo",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape)
                         )
                     }
+                    if (contact.photo == null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    color = getAvatarColor(contact.id),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = contact.name.first().uppercase(),
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
-            }
-        },
+            },
 
-        trailingContent = null,
+            trailingContent = null,
 
-        colors = ListItemDefaults.colors(
-            containerColor = if (isSelected) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            }
+            colors = ListItemDefaults.colors(
+                containerColor = if (isSelected) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                }
+            )
         )
-    )
+        dropdownList?.forEachIndexed { idx, it ->
+            ListItem({
+                Text(text = it)
+            }, Modifier.clickable {
+                dropdownListClick(idx)
+            })
+        }
+    }
 }

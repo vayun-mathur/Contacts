@@ -121,7 +121,7 @@ fun ContactDetailsPage(navController: NavController, contact: Contact) {
                 ActionButtonsRow(details.phoneNumbers.firstOrNull()?.number, details.emails.firstOrNull()?.address)
             }
 
-            items(details.phoneNumbers, key = { it.number }) { phone ->
+            items(details.phoneNumbers, key = { it.id }) { phone ->
                 DetailItem(
                     icon = painterResource(R.drawable.outline_call_24),
                     data = formatPhoneNumber(phone.number),
@@ -134,14 +134,14 @@ fun ContactDetailsPage(navController: NavController, contact: Contact) {
                     }
                 )
             }
-            items(details.emails, key = { it.address }) { email ->
+            items(details.emails, key = { it.id }) { email ->
                 DetailItem(
                     icon = painterResource(R.drawable.outline_mail_24),
                     data = email.address,
                     label = email.typeString(context)
                 )
             }
-            items(details.addresses, key = { it.formattedAddress }) { address ->
+            items(details.addresses, key = { it.id }) { address ->
                 DetailItem(
                     icon = painterResource(R.drawable.outline_location_on_24),
                     data = address.formattedAddress,
