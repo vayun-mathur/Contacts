@@ -51,6 +51,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.navigation.NavController
+import com.google.i18n.phonenumbers.NumberParseException
+import com.google.i18n.phonenumbers.PhoneNumberUtil
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
@@ -122,7 +124,7 @@ fun ContactDetailsPage(navController: NavController, contact: Contact) {
             items(details.phoneNumbers, key = { it.number }) { phone ->
                 DetailItem(
                     icon = painterResource(R.drawable.outline_call_24),
-                    data = phone.number,
+                    data = formatPhoneNumber(phone.number),
                     label = phone.typeString(context),
                     trailingIcon = painterResource(R.drawable.outline_chat_24),
                     onTrailingIconClick = {
@@ -351,5 +353,26 @@ fun GroupedSection(
             modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
         )
         content()
+    }
+}
+
+fun formatPhoneNumber(numberString: String, defaultRegion: String = "US"): String {
+    val phoneUtil = PhoneNumberUtil.getInstance()
+
+    return try {
+        val phoneNumber = phoneUtil.parse(numberString, defaultRegion)
+        if (!phoneUtil.isValidNumber(phoneNumber)) return numberString
+        val regionOfNumber = phoneUtil.getRegionCodeForNumber(phoneNumber)
+        val formatType = if (regionOfNumber == defaultRegion) {
+            PhoneNumberUtil.PhoneNumberFormat.NATIONAL
+        } else {
+            PhoneNumberUtil.PhoneNumberFormat.INTERNATIONAL
+        }
+
+        phoneUtil.format(phoneNumber, formatType)
+
+    } catch (e: NumberParseException) {
+        println("Error parsing number: ${e.message}")
+        numberString
     }
 }
