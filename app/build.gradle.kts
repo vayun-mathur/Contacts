@@ -41,6 +41,7 @@ android {
 }
 
 dependencies {
+    implementation("com.googlecode.libphonenumber:libphonenumber:8.13.36")
     implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1")
     implementation(libs.androidx.core.ktx)

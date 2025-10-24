@@ -59,6 +59,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.google.i18n.phonenumbers.PhoneNumberUtil
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -247,6 +248,19 @@ fun EditContactPage(navController: NavController, contact: Contact) {
     }
 }
 
+private fun getCountryFlagEmoji(phoneNumber: String): String {
+    val phoneUtil = PhoneNumberUtil.getInstance()
+    return try {
+        val numberProto = phoneUtil.parse(phoneNumber, "")
+        val regionCode = phoneUtil.getRegionCodeForNumber(numberProto)
+        val firstLetter = Character.codePointAt(regionCode, 0) - 0x41 + 0x1F1E6
+        val secondLetter = Character.codePointAt(regionCode, 1) - 0x41 + 0x1F1E6
+        String(Character.toChars(firstLetter)) + String(Character.toChars(secondLetter))
+    } catch (e: Exception) {
+        ""
+    }
+}
+
 val namePrefixes = listOf("None", "Dr", "Mr", "Mrs", "Ms")
 val nameSuffixes = listOf("None", "Jr", "Sr", "I", "II", "III", "IV", "V")
 
@@ -418,6 +432,11 @@ private inline fun <reified T: ContactDetail<T>> ColumnScope.DetailsSection(
             },
             visualTransformation = visualTransformation,
             label = { Text(detailType) },
+            leadingIcon = {
+                if (detail is PhoneNumber) {
+                    Text(getCountryFlagEmoji(detail.value))
+                }
+            },
             trailingIcon = {
                 Row {
                     var dropdownExpanded by remember { mutableStateOf(false) }
