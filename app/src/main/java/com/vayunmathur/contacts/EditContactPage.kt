@@ -63,10 +63,8 @@ import com.google.i18n.phonenumbers.PhoneNumberUtil
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
-import kotlinx.datetime.atTime
 import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
-import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import java.io.ByteArrayOutputStream
 import kotlin.io.encoding.Base64
@@ -257,7 +255,7 @@ private fun getCountryFlagEmoji(phoneNumber: String): String {
         val firstLetter = Character.codePointAt(regionCode, 0) - 0x41 + 0x1F1E6
         val secondLetter = Character.codePointAt(regionCode, 1) - 0x41 + 0x1F1E6
         String(Character.toChars(firstLetter)) + String(Character.toChars(secondLetter))
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         ""
     }
 }

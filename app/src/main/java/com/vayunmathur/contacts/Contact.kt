@@ -92,29 +92,6 @@ data class Event(val startDate: LocalDate, override val type: Int): ContactDetai
     override fun typeString(context: Context) = CDKEvent.getTypeLabel(context.resources, type, "").toString()
 }
 
-private fun getPhotoBytes(context: Context, photoUri: String?): ByteArray? {
-    if (photoUri.isNullOrEmpty()) {
-        return null
-    }
-    return try {
-        val uri = photoUri.toUri()
-        context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            // Read stream into byte array
-            val buffer = ByteArray(8192)
-            var bytesRead: Int
-            val output = ByteArrayOutputStream()
-            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                output.write(buffer, 0, bytesRead)
-            }
-            output.toByteArray()
-        }
-    } catch (e: Exception) {
-        // Log the error or handle it appropriately
-        println("Error reading photo bytes from URI: $photoUri, Error: ${e.message}")
-        null
-    }
-}
-
 @Serializable
 data class Contact(
     val id: Long,
