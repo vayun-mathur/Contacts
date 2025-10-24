@@ -24,6 +24,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,6 +38,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,9 +59,19 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.atTime
+import kotlinx.datetime.format
+import kotlinx.datetime.format.MonthNames
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
 import java.io.ByteArrayOutputStream
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalEncodingApi::class)
 @Composable
@@ -211,12 +224,10 @@ fun EditContactPage(navController: NavController, contact: Contact) {
 
             Spacer(Modifier.height(16.dp))
 
-            DetailsSection(
+            DateDetailsSection(
                 "Dates",
                 dates,
                 painterResource(R.drawable.outline_event_24),
-                KeyboardType.Number,
-                VisualTransformation.None,
                 listOf(CDKEvent.TYPE_BIRTHDAY, CDKEvent.TYPE_ANNIVERSARY, CDKEvent.TYPE_OTHER)
             )
 
@@ -279,6 +290,117 @@ fun NameSuffixChooser(nameSuffix: String, onNameSuffixChange: (String) -> Unit) 
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalTime::class)
+@Composable
+private fun ColumnScope.DateDetailsSection(
+    detailType: String,
+    details: SnapshotStateList<Event>,
+    icon: Painter,
+    options: List<Int>
+) {
+    val context = LocalContext.current
+    details.forEachIndexed { index, detail ->
+        var openDialog by remember { mutableStateOf(false) }
+        Box {
+            OutlinedTextField(
+                value = detail.startDate.format(LocalDate.Format {
+                    monthName(MonthNames.ENGLISH_FULL)
+                    chars(" ")
+                    day()
+                    chars(", ")
+                    year()
+                }),
+                onValueChange = { },
+                readOnly = true,
+                label = { Text(detailType) },
+                trailingIcon = {
+                    Row {
+                        var dropdownExpanded by remember { mutableStateOf(false) }
+                        TextButton({ dropdownExpanded = true }) {
+                            Text(detail.typeString(context))
+                            Icon(
+                                painterResource(R.drawable.baseline_arrow_drop_down_24),
+                                contentDescription = null
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = dropdownExpanded,
+                            onDismissRequest = { dropdownExpanded = false }) {
+                            options.forEach { option ->
+                                DropdownMenuItem(
+                                    onClick = {
+                                        details[index] = detail.withType(option)
+                                        dropdownExpanded = false
+                                    },
+                                    text = { Text(ContactDetail.default<Event>().withType(option).typeString(context)) }
+                                )
+                            }
+                        }
+                        IconButton(onClick = { details.removeAt(index) }) {
+                            Icon(
+                                painterResource(R.drawable.baseline_remove_circle_outline_24),
+                                "Remove $detailType"
+                            )
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clickable { openDialog = true }
+            )
+        }
+
+        if (openDialog) {
+            val datePickerState = rememberDatePickerState(
+                initialSelectedDateMillis = detail.startDate.atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds()
+            )
+            DatePickerDialog(
+                onDismissRequest = { openDialog = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        datePickerState.selectedDateMillis?.let {
+                            details[index] = detail.withValue(
+                                Instant.fromEpochMilliseconds(it).toLocalDateTime(
+                                TimeZone.UTC).date.format(LocalDate.Formats.ISO))
+                        }
+                        openDialog = false
+                    }) {
+                        Text("OK")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { openDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            ) {
+                DatePicker(state = datePickerState)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+    if (details.isEmpty()) {
+        FilledTonalButton(
+            onClick = { details += ContactDetail.default<Event>() },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(icon, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Add $detailType")
+        }
+    } else {
+        TextButton(
+            onClick = { details += ContactDetail.default<Event>() },
+            modifier = Modifier.align(Alignment.Start)
+        ) {
+            Text("Add $detailType")
+        }
+    }
+}
+
 @Composable
 private inline fun <reified T: ContactDetail<T>> ColumnScope.DetailsSection(
     detailType: String,
@@ -315,7 +437,8 @@ private inline fun <reified T: ContactDetail<T>> ColumnScope.DetailsSection(
                                     details[index] = detail.withType(option)
                                     dropdownExpanded = false
                                 },
-                                text = { Text(ContactDetail.default<T>().withType(option).typeString(context)) })
+                                text = { Text(ContactDetail.default<T>().withType(option).typeString(context)) }
+                            )
                         }
                     }
                     IconButton(onClick = { details.removeAt(index) }) {
