@@ -65,9 +65,7 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     NavHost(navController, startDestination = ContactsScreen) {
                         composable<ContactsScreen> {
-                            Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                                ContactList(navController, modifier = Modifier.padding(innerPadding))
-                            }
+                            ContactList(navController)
                         }
                         composable<ContactDetailsScreen> {
                             ContactDetailsPage(navController, Json.decodeFromString(it.toRoute<ContactDetailsScreen>().contact))

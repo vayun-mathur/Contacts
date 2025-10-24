@@ -118,6 +118,7 @@ private fun getPhotoBytes(context: Context, photoUri: String?): ByteArray? {
 @Serializable
 data class Contact(
     val id: Long,
+    val lookupKey: String,
     val namePrefix: String,
     val firstName: String,
     val middleName: String,
@@ -266,6 +267,7 @@ data class Contact(
             val uri = ContactsContract.Contacts.CONTENT_URI
             val projection = arrayOf(
                 ContactsContract.Contacts._ID,
+                ContactsContract.Contacts.LOOKUP_KEY,
                 ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,
                 ContactsContract.Contacts.PHOTO_THUMBNAIL_URI,
                 ContactsContract.Contacts.STARRED
@@ -275,6 +277,7 @@ data class Contact(
             cursor?.use {
                 while (it.moveToNext()) {
                     val contactId = it.getLong(it.getColumnIndexOrThrow(ContactsContract.Contacts._ID))
+                    val lookupKey = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.LOOKUP_KEY))
                     val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY))
                     val photoThumbnailUriString = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.PHOTO_THUMBNAIL_URI))
                     val isFavorite = it.getInt(it.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)) == 1
@@ -351,6 +354,7 @@ data class Contact(
                     contacts.add(
                         Contact(
                             id = contactId,
+                            lookupKey = lookupKey,
                             namePrefix = namePrefix,
                             firstName = firstName,
                             middleName = middleName,
@@ -364,6 +368,19 @@ data class Contact(
                 }
             }
             return contacts
+        }
+
+        fun delete(context: Context, contact: Contact) {
+            val contentResolver = context.contentResolver
+//            println(contentResolver.delete(
+//                ContactsContract.Data.CONTENT_URI,
+//                "${ContactsContract.Data.RAW_CONTACT_ID} = ?",
+//                arrayOf(contactId.toString())
+//            ))
+            println(contentResolver.delete(
+                Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_LOOKUP_URI, contact.lookupKey),
+                null, null
+            ))
         }
     }
 }

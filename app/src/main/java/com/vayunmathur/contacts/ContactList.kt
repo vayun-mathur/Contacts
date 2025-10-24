@@ -2,9 +2,11 @@ package com.vayunmathur.contacts
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,16 +18,21 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +44,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.SortedMap
@@ -44,51 +54,132 @@ import kotlin.collections.component1
 import kotlin.collections.component2
 import kotlin.io.encoding.Base64
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactList(navController: NavController, modifier: Modifier = Modifier) {
+fun ContactList(navController: NavController) {
     val context = LocalContext.current
     var contacts by remember { mutableStateOf(emptyList<Contact>()) }
+
+    var isInSelectionMode by remember { mutableStateOf(false) }
+    var selectedContactIds by remember { mutableStateOf(emptySet<Long>()) }
+
+    val scope = rememberCoroutineScope()
+
+    BackHandler(enabled = isInSelectionMode) {
+        isInSelectionMode = false
+        selectedContactIds = emptySet()
+    }
 
     LaunchedEffect(Unit) {
         contacts = Contact.getAllContacts(context).sortedBy { it.name }
     }
 
-    // Partition the contacts
     val (favorites, otherContacts) = contacts.partition { it.isFavorite }
 
-    // Group the non-favorite contacts by their first letter
     val groupedContacts: SortedMap<Char, List<Contact>> = otherContacts
         .groupBy { it.name.first().uppercaseChar() }
         .toSortedMap()
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        // Use contentPadding for space at the top/bottom
-        contentPadding = PaddingValues(vertical = 16.dp, horizontal = 16.dp),
-        // This spaces out every item in the list
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        // --- Favorites Section ---
-        if (favorites.isNotEmpty()) {
-            // Add the "Favorites" header as its own item
-            item {
-                FavoritesHeader()
-            }
-            // Add the list of favorite contacts
-            items(favorites, key = { it.id }) { contact ->
-                ContactItem(navController, contact)
-            }
-        }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Contacts") },
+                actions = {
+                    if (isInSelectionMode) {
+                        IconButton(onClick = {
+                            scope.launch(Dispatchers.IO) {
+                                selectedContactIds.forEach { id ->
+                                    Contact.delete(context, contacts.first { it.id == id })
+                                }
 
-        // --- Alphabetical Sections ---
-        groupedContacts.forEach { (letter, contactsInGroup) ->
-            // Add the letter header (e.g., "A")
-            item {
-                LetterHeader(letter)
+                                withContext(Dispatchers.Main) {
+                                    contacts = contacts.filterNot { it.id in selectedContactIds }
+                                    isInSelectionMode = false
+                                    selectedContactIds = emptySet()
+                                }
+                            }
+                        }) {
+                            Icon(painterResource(R.drawable.outline_delete_24),
+                                contentDescription = "Delete selected contacts"
+                            )
+                        }
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(paddingValues),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // --- Favorites Section ---
+            if (favorites.isNotEmpty()) {
+                item {
+                    FavoritesHeader()
+                }
+                // Add the list of favorite contacts
+                items(favorites, key = { it.id }) { contact ->
+                    val isSelected = selectedContactIds.contains(contact.id)
+
+                    ContactItem(
+                        contact = contact,
+                        isSelected = isSelected,
+                        onClick = {
+                            if (isInSelectionMode) {
+                                val newSelection = if (isSelected) {
+                                    selectedContactIds - contact.id
+                                } else {
+                                    selectedContactIds + contact.id
+                                }
+                                if (newSelection.isEmpty()) {
+                                    isInSelectionMode = false
+                                }
+                                selectedContactIds = newSelection
+                            } else {
+                                navController.navigate(ContactDetailsScreen(Json.encodeToString(contact)))
+                            }
+                        },
+                        onLongClick = {
+                            isInSelectionMode = true
+                            selectedContactIds = selectedContactIds + contact.id
+                        }
+                    )
+                }
             }
-            // Add the list of contacts for that letter
-            items(contactsInGroup, key = { it.id }) { contact ->
-                ContactItem(navController, contact)
+
+            // --- Alphabetical Sections ---
+            groupedContacts.forEach { (letter, contactsInGroup) ->
+                item {
+                    LetterHeader(letter)
+                }
+                items(contactsInGroup, key = { it.id }) { contact ->
+                    val isSelected = selectedContactIds.contains(contact.id)
+
+                    ContactItem(
+                        contact = contact,
+                        isSelected = isSelected,
+                        onClick = {
+                            if (isInSelectionMode) {
+                                val newSelection = if (isSelected) {
+                                    selectedContactIds - contact.id
+                                } else {
+                                    selectedContactIds + contact.id
+                                }
+                                if (newSelection.isEmpty()) {
+                                    isInSelectionMode = false
+                                }
+                                selectedContactIds = newSelection
+                            } else {
+                                navController.navigate(ContactDetailsScreen(Json.encodeToString(contact)))
+                            }
+                        },
+                        onLongClick = {
+                            isInSelectionMode = true
+                            selectedContactIds = selectedContactIds + contact.id
+                        }
+                    )
+                }
             }
         }
     }
@@ -138,15 +229,21 @@ fun getAvatarColor(id: Long): Color {
 }
 
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ContactItem(navController: NavController, contact: Contact) {
-    // Apply the clip and background to the ListItem itself
+fun ContactItem(
+    contact: Contact,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
     ListItem(
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
-            .clickable {
-                navController.navigate(ContactDetailsScreen(Json.encodeToString(contact)))
-            }, // Rounded corners for each item
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         headlineContent = {
             Text(
                 text = contact.name,
@@ -155,7 +252,6 @@ fun ContactItem(navController: NavController, contact: Contact) {
             )
         },
         leadingContent = {
-            // Use a simple Box for consistent alignment
             Box(
                 modifier = Modifier.size(40.dp),
                 contentAlignment = Alignment.Center
@@ -165,7 +261,7 @@ fun ContactItem(navController: NavController, contact: Contact) {
                         mutableStateOf<Bitmap>(BitmapFactory.decodeByteArray(Base64.decode(it), 0, Base64.decode(it).size))
                     }
                     Image(
-                        bitmap = bitmap.asImageBitmap(), // Assuming photo is a Bitmap
+                        bitmap = bitmap.asImageBitmap(),
                         contentDescription = "${contact.name} photo",
                         modifier = Modifier
                             .fillMaxSize()
@@ -177,14 +273,14 @@ fun ContactItem(navController: NavController, contact: Contact) {
                         modifier = Modifier
                             .fillMaxSize()
                             .background(
-                                color = getAvatarColor(contact.id), // Use dynamic color
+                                color = getAvatarColor(contact.id),
                                 shape = CircleShape
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = contact.name.first().uppercase(),
-                            color = Color.White, // Ensure text is visible on colored background
+                            color = Color.White,
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -192,11 +288,15 @@ fun ContactItem(navController: NavController, contact: Contact) {
                 }
             }
         },
-        // Remove the trailing star icon
+
         trailingContent = null,
-        // Set the item's background color
+
         colors = ListItemDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant // Use a theme color
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            }
         )
     )
 }

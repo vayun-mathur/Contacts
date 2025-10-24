@@ -130,6 +130,7 @@ fun EditContactPage(navController: NavController, contact: Contact) {
                     Button(onClick = {
                         val newContact = Contact(
                             contact.id,
+                            contact.lookupKey,
                             namePrefix,
                             firstName,
                             middleName,
