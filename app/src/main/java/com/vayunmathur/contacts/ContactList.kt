@@ -208,7 +208,7 @@ fun ContactListPick(mimeType: String, onClick: (Uri) -> Unit) {
 
 @Composable
 fun ContactItemPick(contact: Contact, mimeType: String, onClick: (Uri) -> Unit) {
-    if(mimeType == ContactsContract.Contacts.CONTENT_ITEM_TYPE) {
+    if(mimeType == ContactsContract.Contacts.CONTENT_ITEM_TYPE || mimeType == ContactsContract.Contacts.CONTENT_TYPE) {
         ContactItem(contact, false, { onClick(Uri.withAppendedPath(
             ContactsContract.Contacts.CONTENT_URI,
             contact.id.toString()
