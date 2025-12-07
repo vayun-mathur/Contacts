@@ -85,9 +85,10 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             composable<EditContactScreen> {
+                                val contact = it.toRoute<EditContactScreen>().contact?.let { Json.decodeFromString<Contact>(it) }
                                 EditContactPage(
                                     navController,
-                                    Json.decodeFromString(it.toRoute<ContactDetailsScreen>().contact)
+                                    contact
                                 )
                             }
                         }
@@ -105,4 +106,4 @@ object ContactsScreen
 data class ContactDetailsScreen(val contact: String)
 
 @Serializable
-data class EditContactScreen(val contact: String)
+data class EditContactScreen(val contact: String?)

@@ -6,7 +6,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.provider.ContactsContract
 import androidx.core.net.toUri
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -18,6 +17,8 @@ import java.io.InputStream
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
+import android.database.Cursor
+import android.provider.ContactsContract
 
 
 data class ContactDetails(
@@ -110,6 +111,95 @@ data class Contact(
         get() = listOfNotNull(namePrefix.ifEmpty { null }, firstName, middleName.ifEmpty { null }, lastName, nameSuffix.ifEmpty { null }).joinToString(" ")
 
     fun save(context: Context, details: ContactDetails) {
+        if (id == 0L) {
+            insert(context, details)
+        } else {
+            update(context, details)
+        }
+    }
+
+    private fun getRawContactId(context: Context): String? {
+        var rawContactId: String? = null
+        val cursor = context.getContentResolver().query(
+            ContactsContract.RawContacts.CONTENT_URI,
+            arrayOf<String>(ContactsContract.RawContacts._ID),
+            ContactsContract.RawContacts.CONTACT_ID + "=?",
+            arrayOf<String?>(id.toString()),
+            null
+        )
+
+        if (cursor != null) {
+            if (cursor.moveToFirst()) {
+                // We just take the first RawContact found.
+                // In complex cases (e.g., Google vs WhatsApp contacts), you might want to filter by account type.
+                val idIndex = cursor.getColumnIndex(ContactsContract.RawContacts._ID)
+                if (idIndex != -1) {
+                    rawContactId = cursor.getString(idIndex)
+                }
+            }
+            cursor.close()
+        }
+        return rawContactId
+    }
+
+    private fun insert(context: Context, details: ContactDetails) {
+        val ops = ArrayList<ContentProviderOperation>()
+        ops.add(ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+            .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
+            .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
+            .build())
+
+        // Name
+        ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+            .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+            .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+            .withValue(ContactsContract.CommonDataKinds.StructuredName.PREFIX, namePrefix.ifEmpty { null })
+            .withValue(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, firstName.ifEmpty { null })
+            .withValue(ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME, middleName.ifEmpty { null })
+            .withValue(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, lastName.ifEmpty { null })
+            .withValue(ContactsContract.CommonDataKinds.StructuredName.SUFFIX, nameSuffix.ifEmpty { null })
+            .build())
+
+        // Company
+        ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+            .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+            .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Organization.CONTENT_ITEM_TYPE)
+            .withValue(ContactsContract.CommonDataKinds.Organization.COMPANY, companyName)
+            .build())
+
+        // Photo
+        photo?.let {
+            ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Photo.CONTENT_ITEM_TYPE)
+                .withValue(ContactsContract.CommonDataKinds.Photo.PHOTO, Base64.decode(it))
+                .build())
+        }
+
+        // Phone numbers
+        details.phoneNumbers.forEach {
+            ops.add(createInsertOperation(it))
+        }
+
+        // Emails
+        details.emails.forEach {
+            ops.add(createInsertOperation(it))
+        }
+
+        // Addresses
+        details.addresses.forEach {
+            ops.add(createInsertOperation(it))
+        }
+
+        // Dates
+        details.dates.forEach {
+            ops.add(createInsertOperation(it))
+        }
+
+        context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
+    }
+
+    private fun update(context: Context, details: ContactDetails) {
         val ops = ArrayList<ContentProviderOperation>()
 
         // Name
@@ -138,7 +228,8 @@ data class Contact(
                 .build()
         )
 
-        if(photo != null) {
+        // Photo
+        if (photo != null) {
             ops.add(
                 ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
                     .withValue(ContactsContract.Data.RAW_CONTACT_ID, id)
@@ -161,58 +252,15 @@ data class Contact(
             )
         }
 
-        // Phone numbers
-        details.phoneNumbers.forEach { phoneNumber ->
-            ops.add(
-                ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
-                    .withSelection(
-                        "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ? AND ${ContactsContract.CommonDataKinds.Phone.TYPE} = ?",
-                        arrayOf(id.toString(), ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE, phoneNumber.type.toString())
-                    )
-                    .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phoneNumber.number)
-                    .build()
-            )
-        }
+        val rawContactID = getRawContactId(context)
 
-        // Emails
-        details.emails.forEach { email ->
-            ops.add(
-                ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
-                    .withSelection(
-                        "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ? AND ${ContactsContract.CommonDataKinds.Email.TYPE} = ?",
-                        arrayOf(id.toString(), ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE, email.type.toString())
-                    )
-                    .withValue(ContactsContract.CommonDataKinds.Email.ADDRESS, email.address)
-                    .build()
-            )
-        }
+        // Details
+        handleDetailUpdates(ops, details.phoneNumbers, rawContactID)
+        handleDetailUpdates(ops, details.emails, rawContactID)
+        handleDetailUpdates(ops, details.addresses, rawContactID)
+        handleDetailUpdates(ops, details.dates, rawContactID)
 
-        // Addresses
-        details.addresses.forEach { address ->
-            ops.add(
-                ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
-                    .withSelection(
-                        "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ? AND ${ContactsContract.CommonDataKinds.StructuredPostal.TYPE} = ?",
-                        arrayOf(id.toString(), ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE, address.type.toString())
-                    )
-                    .withValue(ContactsContract.CommonDataKinds.StructuredPostal.FORMATTED_ADDRESS, address.formattedAddress)
-                    .build()
-            )
-        }
-
-        // Dates
-        details.dates.forEach { event ->
-            ops.add(
-                ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
-                    .withSelection(
-                        "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ? AND ${ContactsContract.CommonDataKinds.Event.TYPE} = ?",
-                        arrayOf(id.toString(), ContactsContract.CommonDataKinds.Event.CONTENT_ITEM_TYPE, event.type.toString())
-                    )
-                    .withValue(ContactsContract.CommonDataKinds.Event.START_DATE, event.startDate.format(LocalDate.Formats.ISO))
-                    .build()
-            )
-        }
-
+        // Favorite
         ops.add(
             ContentProviderOperation.newUpdate(ContactsContract.Contacts.CONTENT_URI)
                 .withSelection(
@@ -224,6 +272,62 @@ data class Contact(
         )
 
         context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
+    }
+
+    private fun <T: ContactDetail<T>> handleDetailUpdates(ops: MutableList<ContentProviderOperation>, details: List<T>, rawContactID: String?) {
+        details.forEach { detail ->
+            if (detail.id == 0L) {
+                ops.add(createInsertOperation(detail, rawContactID))
+            } else {
+                ops.add(createUpdateOperation(detail))
+            }
+        }
+    }
+
+    private fun createInsertOperation(detail: ContactDetail<*>, rawContactId: String? = null): ContentProviderOperation {
+        val builder = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+        if (rawContactId != null) {
+            builder.withValue(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
+        } else {
+            builder.withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+        }
+
+        return when (detail) {
+            is PhoneNumber -> builder
+                .withValue(ContactsContract.Data.MIMETYPE, CDKPhone.CONTENT_ITEM_TYPE)
+                .withValue(CDKPhone.NUMBER, detail.number)
+                .withValue(CDKPhone.TYPE, detail.type)
+                .build()
+            is Email -> builder
+                .withValue(ContactsContract.Data.MIMETYPE, CDKEmail.CONTENT_ITEM_TYPE)
+                .withValue(CDKEmail.ADDRESS, detail.address)
+                .withValue(CDKEmail.TYPE, detail.type)
+                .build()
+            is Address -> builder
+                .withValue(ContactsContract.Data.MIMETYPE, CDKStructuredPostal.CONTENT_ITEM_TYPE)
+                .withValue(CDKStructuredPostal.FORMATTED_ADDRESS, detail.formattedAddress)
+                .withValue(CDKStructuredPostal.TYPE, detail.type)
+                .build()
+            is Event -> builder
+                .withValue(ContactsContract.Data.MIMETYPE, CDKEvent.CONTENT_ITEM_TYPE)
+                .withValue(CDKEvent.START_DATE, detail.startDate.format(LocalDate.Formats.ISO))
+                .withValue(CDKEvent.TYPE, detail.type)
+                .build()
+            else -> throw IllegalArgumentException("Unknown detail type")
+        }
+    }
+
+    private fun createUpdateOperation(detail: ContactDetail<*>): ContentProviderOperation {
+        val builder = ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
+            .withSelection("${ContactsContract.Data._ID} = ?", arrayOf(detail.id.toString()))
+
+        return when (detail) {
+            is PhoneNumber -> builder.withValue(CDKPhone.NUMBER, detail.number).withValue(CDKPhone.TYPE, detail.type).build()
+            is Email -> builder.withValue(CDKEmail.ADDRESS, detail.address).withValue(CDKEmail.TYPE, detail.type).build()
+            is Address -> builder.withValue(CDKStructuredPostal.FORMATTED_ADDRESS, detail.formattedAddress).withValue(CDKStructuredPostal.TYPE, detail.type).build()
+            is Event -> builder.withValue(CDKEvent.START_DATE, detail.startDate.format(LocalDate.Formats.ISO)).withValue(CDKEvent.TYPE, detail.type).build()
+            else -> throw IllegalArgumentException("Unknown detail type")
+        }
     }
 
     companion object {
@@ -423,6 +527,7 @@ fun Contact.getDetails(context: Context): ContactDetails {
     contentResolver.query(
         ContactsContract.Data.CONTENT_URI,
         arrayOf(
+            ContactsContract.CommonDataKinds.Event._ID,
             ContactsContract.CommonDataKinds.Event.START_DATE,
             ContactsContract.CommonDataKinds.Event.TYPE
         ),
@@ -431,9 +536,17 @@ fun Contact.getDetails(context: Context): ContactDetails {
         null
     )?.use { cursor ->
         while (cursor.moveToNext()) {
+            val id = cursor.getLong(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Event._ID))
             val date = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Event.START_DATE))
             val type = cursor.getInt(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Event.TYPE))
-            dates.add(Event(0,LocalDate.parse(date), type))
+            val localDate = if(date.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
+                LocalDate.parse(date, LocalDate.Formats.ISO)
+            } else if(date.matches(Regex("\\d{8}"))) {
+                LocalDate.parse(date, LocalDate.Format { year(); monthNumber(); day() })
+            } else {
+                continue
+            }
+            dates.add(Event(id,localDate, type))
         }
     }
 

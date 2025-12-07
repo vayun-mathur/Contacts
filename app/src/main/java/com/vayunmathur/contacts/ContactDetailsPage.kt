@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +54,9 @@ import androidx.core.net.toUri
 import androidx.navigation.NavController
 import com.google.i18n.phonenumbers.NumberParseException
 import com.google.i18n.phonenumbers.PhoneNumberUtil
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
@@ -66,6 +70,7 @@ fun ContactDetailsPage(navController: NavController, contact: Contact) {
     val context = LocalContext.current
     val details = contact.getDetails(context)
     var isFavorite by remember { mutableStateOf(contact.isFavorite) }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -93,6 +98,18 @@ fun ContactDetailsPage(navController: NavController, contact: Contact) {
                     IconButton(onClick = { navController.navigate(EditContactScreen(Json.encodeToString(contact))) }) {
                         Icon(painterResource(R.drawable.outline_edit_24),
                             contentDescription = "Edit"
+                        )
+                    }
+                    IconButton(onClick = {
+                        scope.launch(Dispatchers.IO) {
+                            Contact.delete(context, contact)
+                            withContext(Dispatchers.Main) {
+                                navController.popBackStack()
+                            }
+                        }
+                    }) {
+                        Icon(painterResource(R.drawable.outline_delete_24),
+                            contentDescription = "Delete"
                         )
                     }
                 },

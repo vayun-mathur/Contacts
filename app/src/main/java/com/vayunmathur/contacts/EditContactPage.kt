@@ -1,7 +1,9 @@
 package com.vayunmathur.contacts
 
+import android.content.ContentProviderOperation
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.provider.ContactsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,6 +25,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AddAPhoto
+import androidx.compose.material.icons.outlined.ArrowDropDown
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -45,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
@@ -60,6 +70,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.google.i18n.phonenumbers.PhoneNumberUtil
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -67,6 +80,7 @@ import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.toLocalDateTime
 import java.io.ByteArrayOutputStream
+import java.util.ArrayList
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.ExperimentalTime
@@ -74,16 +88,17 @@ import kotlin.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalEncodingApi::class)
 @Composable
-fun EditContactPage(navController: NavController, contact: Contact) {
+fun EditContactPage(navController: NavController, contact: Contact?) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
-    var namePrefix by remember { mutableStateOf(contact.namePrefix) }
-    var firstName by remember { mutableStateOf(contact.firstName) }
-    var middleName by remember { mutableStateOf(contact.middleName) }
-    var lastName by remember { mutableStateOf(contact.lastName) }
-    var nameSuffix by remember { mutableStateOf(contact.nameSuffix) }
-    var company by remember { mutableStateOf(contact.companyName) }
-    var photo by remember { mutableStateOf(contact.photo) }
+    var namePrefix by remember { mutableStateOf(contact?.namePrefix ?: "") }
+    var firstName by remember { mutableStateOf(contact?.firstName ?: "") }
+    var middleName by remember { mutableStateOf(contact?.middleName ?: "") }
+    var lastName by remember { mutableStateOf(contact?.lastName ?: "") }
+    var nameSuffix by remember { mutableStateOf(contact?.nameSuffix ?: "") }
+    var company by remember { mutableStateOf(contact?.companyName ?: "") }
+    var photo by remember { mutableStateOf(contact?.photo) }
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
@@ -101,24 +116,19 @@ fun EditContactPage(navController: NavController, contact: Contact) {
     val addresses = remember { mutableStateListOf<Address>() }
 
     LaunchedEffect(Unit) {
-        val details = contact.getDetails(context)
-        phoneNumbers.addAll(details.phoneNumbers)
-        emails.addAll(details.emails)
-        dates.addAll(details.dates)
-        addresses.addAll(details.addresses)
-
-        if (phoneNumbers.isEmpty()) {
-            phoneNumbers.add(PhoneNumber(0, "", CDKPhone.TYPE_MOBILE))
-        }
-        if (emails.isEmpty()) {
-            emails.add(Email(0, "", CDKEmail.TYPE_HOME))
+        contact?.let { contact ->
+            val details = contact.getDetails(context)
+            phoneNumbers.addAll(details.phoneNumbers)
+            emails.addAll(details.emails)
+            dates.addAll(details.dates)
+            addresses.addAll(details.addresses)
         }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Edit contact") },
+                title = { Text(if (contact == null) "Add contact" else "Edit contact") },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(painterResource(R.drawable.outline_close_24), contentDescription = "Close")
@@ -126,26 +136,31 @@ fun EditContactPage(navController: NavController, contact: Contact) {
                 },
                 actions = {
                     Button(onClick = {
-                        val newContact = Contact(
-                            contact.id,
-                            contact.lookupKey,
-                            namePrefix,
-                            firstName,
-                            middleName,
-                            lastName,
-                            nameSuffix,
-                            company,
-                            photo,
-                            contact.isFavorite
-                        )
-                        val contactDetails = ContactDetails(
-                            phoneNumbers,
-                            emails,
-                            addresses,
-                            dates
-                        )
-                        newContact.save(context, contactDetails)
-                        navController.navigateUp()
+                        scope.launch(Dispatchers.IO) {
+                            val newContact = Contact(
+                                contact?.id ?: 0,
+                                contact?.lookupKey ?: "",
+                                namePrefix,
+                                firstName,
+                                middleName,
+                                lastName,
+                                nameSuffix,
+                                company,
+                                photo,
+                                contact?.isFavorite ?: false
+                            )
+                            val contactDetails = ContactDetails(
+                                phoneNumbers,
+                                emails,
+                                addresses,
+                                dates
+                            )
+                            newContact.save(context, contactDetails)
+
+                            withContext(Dispatchers.Main) {
+                                navController.navigateUp()
+                            }
+                        }
                     }) {
                         Text("Save")
                     }
@@ -415,13 +430,14 @@ private fun ColumnScope.DateDetailsSection(
 }
 
 @Composable
-private inline fun <reified T: ContactDetail<T>> ColumnScope.DetailsSection(
+private inline fun <reified T : ContactDetail<T>> ColumnScope.DetailsSection(
     detailType: String,
     details: SnapshotStateList<T>,
     icon: Painter,
     keyboardType: KeyboardType,
     visualTransformation: VisualTransformation,
-    options: List<Int>) {
+    options: List<Int>
+) {
     val context = LocalContext.current
     details.forEachIndexed { index, detail ->
         OutlinedTextField(
