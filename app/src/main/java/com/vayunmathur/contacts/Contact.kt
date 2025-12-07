@@ -17,7 +17,6 @@ import java.io.InputStream
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
-import android.database.Cursor
 import android.provider.ContactsContract
 
 
@@ -120,11 +119,11 @@ data class Contact(
 
     private fun getRawContactId(context: Context): String? {
         var rawContactId: String? = null
-        val cursor = context.getContentResolver().query(
+        val cursor = context.contentResolver.query(
             ContactsContract.RawContacts.CONTENT_URI,
-            arrayOf<String>(ContactsContract.RawContacts._ID),
+            arrayOf(ContactsContract.RawContacts._ID),
             ContactsContract.RawContacts.CONTACT_ID + "=?",
-            arrayOf<String?>(id.toString()),
+            arrayOf(id.toString()),
             null
         )
 
@@ -253,12 +252,13 @@ data class Contact(
         }
 
         val rawContactID = getRawContactId(context)
+        val currentDetails = getDetails(context)
 
         // Details
-        handleDetailUpdates(ops, details.phoneNumbers, rawContactID)
-        handleDetailUpdates(ops, details.emails, rawContactID)
-        handleDetailUpdates(ops, details.addresses, rawContactID)
-        handleDetailUpdates(ops, details.dates, rawContactID)
+        handleDetailUpdates(ops, currentDetails.phoneNumbers, details.phoneNumbers, rawContactID)
+        handleDetailUpdates(ops, currentDetails.emails, details.emails, rawContactID)
+        handleDetailUpdates(ops, currentDetails.addresses, details.addresses, rawContactID)
+        handleDetailUpdates(ops, currentDetails.dates, details.dates, rawContactID)
 
         // Favorite
         ops.add(
@@ -274,12 +274,23 @@ data class Contact(
         context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
     }
 
-    private fun <T: ContactDetail<T>> handleDetailUpdates(ops: MutableList<ContentProviderOperation>, details: List<T>, rawContactID: String?) {
-        details.forEach { detail ->
-            if (detail.id == 0L) {
+    private fun <T: ContactDetail<T>> handleDetailUpdates(ops: MutableList<ContentProviderOperation>, currentDetails: List<T>, newDetails: List<T>, rawContactID: String?) {
+        val currentIds = currentDetails.map { it.id }.toSet()
+        val newIds = newDetails.map { it.id }.toSet()
+
+        val idsToDelete = currentIds - newIds
+        idsToDelete.forEach { id ->
+            ops.add(createDeleteOperation(id))
+        }
+
+        newDetails.forEach { detail ->
+            if (detail.id == 0L) { // New item
                 ops.add(createInsertOperation(detail, rawContactID))
-            } else {
-                ops.add(createUpdateOperation(detail))
+            } else { // Existing item, check if it has changed
+                val oldDetail = currentDetails.find { it.id == detail.id }
+                if (oldDetail != null && oldDetail != detail) {
+                    ops.add(createUpdateOperation(detail))
+                }
             }
         }
     }
@@ -328,6 +339,12 @@ data class Contact(
             is Event -> builder.withValue(CDKEvent.START_DATE, detail.startDate.format(LocalDate.Formats.ISO)).withValue(CDKEvent.TYPE, detail.type).build()
             else -> throw IllegalArgumentException("Unknown detail type")
         }
+    }
+
+    private fun createDeleteOperation(dataId: Long): ContentProviderOperation {
+        return ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
+            .withSelection("${ContactsContract.Data._ID} = ?", arrayOf(dataId.toString()))
+            .build()
     }
 
     companion object {
