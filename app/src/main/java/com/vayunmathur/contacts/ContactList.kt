@@ -37,11 +37,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,35 +51,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import androidx.navigation3.runtime.NavBackStack
+import androidx.navigation3.runtime.NavKey
 import java.util.SortedMap
-import kotlin.collections.component1
-import kotlin.collections.component2
 import kotlin.io.encoding.Base64
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactList(navController: NavController) {
-    val context = LocalContext.current
-    var contacts by remember { mutableStateOf(emptyList<Contact>()) }
-
+fun ContactList(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel) {
+    val contacts by viewModel.contacts.collectAsState()
     var isInSelectionMode by remember { mutableStateOf(false) }
     var selectedContactIds by remember { mutableStateOf(emptySet<Long>()) }
-
-    val scope = rememberCoroutineScope()
 
     BackHandler(enabled = isInSelectionMode) {
         isInSelectionMode = false
         selectedContactIds = emptySet()
-    }
-
-    LaunchedEffect(Unit) {
-        contacts = Contact.getAllContacts(context).sortedBy { it.name }
     }
 
     val (favorites, otherContacts) = contacts.partition { it.isFavorite }
@@ -101,7 +86,7 @@ fun ContactList(navController: NavController) {
             }
             selectedContactIds = newSelection
         } else {
-            navController.navigate(ContactDetailsScreen(Json.encodeToString(contact)))
+            backStack.add(ContactDetailsScreen(contact.id))
         }
     }
 
@@ -112,17 +97,9 @@ fun ContactList(navController: NavController) {
                 actions = {
                     if (isInSelectionMode) {
                         IconButton(onClick = {
-                            scope.launch(Dispatchers.IO) {
-                                selectedContactIds.forEach { id ->
-                                    Contact.delete(context, contacts.first { it.id == id })
-                                }
-
-                                withContext(Dispatchers.Main) {
-                                    contacts = contacts.filterNot { it.id in selectedContactIds }
-                                    isInSelectionMode = false
-                                    selectedContactIds = emptySet()
-                                }
-                            }
+                            viewModel.deleteContacts(selectedContactIds)
+                            isInSelectionMode = false
+                            selectedContactIds = emptySet()
                         }) {
                             Icon(painterResource(R.drawable.outline_delete_24),
                                 contentDescription = "Delete selected contacts"
@@ -133,7 +110,7 @@ fun ContactList(navController: NavController) {
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { navController.navigate(EditContactScreen(null)) }) {
+            FloatingActionButton(onClick = { backStack.add(EditContactScreen(null)) }) {
                 Icon(Icons.Default.Add, contentDescription = "Add contact")
             }
         }
@@ -145,7 +122,6 @@ fun ContactList(navController: NavController) {
         ) {
             if (favorites.isNotEmpty()) {
                 item { FavoritesHeader() }
-                // Add the list of favorite contacts
                 items(favorites, key = { it.id }) { contact ->
                     ContactItem(
                         contact = contact,
@@ -179,14 +155,7 @@ fun ContactList(navController: NavController) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactListPick(mimeType: String?, onClick: (Uri) -> Unit) {
-    val context = LocalContext.current
-    var contacts by remember { mutableStateOf(emptyList<Contact>()) }
-
-    LaunchedEffect(Unit) {
-        contacts = Contact.getAllContacts(context).sortedBy { it.name }
-    }
-
+fun ContactListPick(mimeType: String?, contacts: List<Contact>, onClick: (Uri) -> Unit) {
     val (favorites, otherContacts) = contacts.partition { it.isFavorite }
 
     val groupedContacts: SortedMap<Char, List<Contact>> = otherContacts
@@ -216,6 +185,7 @@ fun ContactListPick(mimeType: String?, onClick: (Uri) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactItemPick(contact: Contact, mimeType: String?, onClick: (Uri) -> Unit) {
     if(mimeType == null || mimeType == ContactsContract.Contacts.CONTENT_ITEM_TYPE || mimeType == ContactsContract.Contacts.CONTENT_TYPE) {
@@ -290,7 +260,7 @@ fun getAvatarColor(id: Long): Color {
 }
 
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ContactItem(
     contact: Contact,

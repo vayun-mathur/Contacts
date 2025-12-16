@@ -1,9 +1,7 @@
 package com.vayunmathur.contacts
 
-import android.content.ContentProviderOperation
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.provider.ContactsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,13 +23,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.AddAPhoto
-import androidx.compose.material.icons.outlined.ArrowDropDown
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -54,7 +45,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
@@ -68,11 +58,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
+import androidx.navigation3.runtime.NavBackStack
+import androidx.navigation3.runtime.NavKey
 import com.google.i18n.phonenumbers.PhoneNumberUtil
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -80,17 +68,15 @@ import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.toLocalDateTime
 import java.io.ByteArrayOutputStream
-import java.util.ArrayList
 import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalEncodingApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditContactPage(navController: NavController, contact: Contact?) {
+fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel, contactId: Long?) {
+    val contact = contactId?.let { viewModel.getContact(it) }
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     var namePrefix by remember { mutableStateOf(contact?.namePrefix ?: "") }
     var firstName by remember { mutableStateOf(contact?.firstName ?: "") }
@@ -130,37 +116,32 @@ fun EditContactPage(navController: NavController, contact: Contact?) {
             TopAppBar(
                 title = { Text(if (contact == null) "Add contact" else "Edit contact") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
+                    IconButton(onClick = { backStack.removeLast() }) {
                         Icon(painterResource(R.drawable.outline_close_24), contentDescription = "Close")
                     }
                 },
                 actions = {
                     Button(onClick = {
-                        scope.launch(Dispatchers.IO) {
-                            val newContact = Contact(
-                                contact?.id ?: 0,
-                                contact?.lookupKey ?: "",
-                                namePrefix,
-                                firstName,
-                                middleName,
-                                lastName,
-                                nameSuffix,
-                                company,
-                                photo,
-                                contact?.isFavorite ?: false
-                            )
-                            val contactDetails = ContactDetails(
-                                phoneNumbers,
-                                emails,
-                                addresses,
-                                dates
-                            )
-                            newContact.save(context, contactDetails)
-
-                            withContext(Dispatchers.Main) {
-                                navController.navigateUp()
-                            }
-                        }
+                        val newContact = Contact(
+                            contact?.id ?: 0,
+                            contact?.lookupKey ?: "",
+                            namePrefix,
+                            firstName,
+                            middleName,
+                            lastName,
+                            nameSuffix,
+                            company,
+                            photo,
+                            contact?.isFavorite ?: false
+                        )
+                        val contactDetails = ContactDetails(
+                            phoneNumbers,
+                            emails,
+                            addresses,
+                            dates
+                        )
+                        viewModel.saveContact(newContact, contactDetails)
+                        backStack.removeLast()
                     }) {
                         Text("Save")
                     }
@@ -303,11 +284,8 @@ fun NameSuffixChooser(nameSuffix: String, onNameSuffixChange: (String) -> Unit) 
     var expanded by remember { mutableStateOf(false) }
     TextButton(onClick = { expanded = true }) {
         Text(nameSuffix)
-        Icon(
-            painterResource(R.drawable.baseline_arrow_drop_down_24),
-            contentDescription = null
-        )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        Icon(painterResource(R.drawable.baseline_arrow_drop_down_24), null)
+        DropdownMenu(expanded, { expanded = false }) {
             nameSuffixes.forEach { suffix ->
                 DropdownMenuItem(text = { Text(suffix) }, onClick = {
                     onNameSuffixChange(suffix)
@@ -507,7 +485,6 @@ private inline fun <reified T : ContactDetail<T>> ColumnScope.DetailsSection(
     }
 }
 
-@OptIn(ExperimentalEncodingApi::class)
 @Composable
 private fun AddPictureSection(photo: String?, onClick: () -> Unit, removePhoto: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = onClick)) {

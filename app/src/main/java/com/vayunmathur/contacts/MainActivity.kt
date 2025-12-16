@@ -16,21 +16,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import androidx.navigation.toRoute
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.ui.NavDisplay
 import com.vayunmathur.contacts.ui.theme.ContactsTheme
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
 class MainActivity : ComponentActivity() {
 
@@ -39,38 +45,32 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val permissions = arrayOf(Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS)
-            var hasPermissions by remember {
-                mutableStateOf(permissions.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED })
-            }
-            val permissionRequestor = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-                hasPermissions = permissions.values.all { it }
-            }
-            LaunchedEffect(Unit) {
-                if (!hasPermissions) {
-                    permissionRequestor.launch(permissions)
-                }
-            }
+            var hasPermissions by remember { mutableStateOf(permissions.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) }
             ContactsTheme {
-                if(!hasPermissions) {
-                    Scaffold {
-                        Box(modifier = Modifier
-                            .padding(it)
-                            .fillMaxSize()) {
-                            Button({
-                                permissionRequestor.launch(permissions)
-                            }, Modifier.align(Alignment.Center)) {
-                                Text(text = "Please grant contacts permission")
+                if (!hasPermissions) {
+                    NoPermissionsScreen(permissions) { hasPermissions = it }
+                } else {
+                    val viewModel: ContactViewModel = viewModel()
+                    val lifecycleOwner = LocalLifecycleOwner.current
+                    DisposableEffect(lifecycleOwner) {
+                        val observer = LifecycleEventObserver { _, event ->
+                            if (event == Lifecycle.Event.ON_RESUME) {
+                                viewModel.loadContacts()
                             }
                         }
+                        lifecycleOwner.lifecycle.addObserver(observer)
+                        onDispose {
+                            lifecycleOwner.lifecycle.removeObserver(observer)
+                        }
                     }
-                } else {
-                    if(intent.action == Intent.ACTION_PICK || intent.action == Intent.ACTION_GET_CONTENT) {
+
+                    if (intent.action == Intent.ACTION_PICK || intent.action == Intent.ACTION_GET_CONTENT) {
                         var type = intent.type
-                        if(intent.data.toString().contains("phones")) {
+                        if (intent.data.toString().contains("phones")) {
                             type = ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE
                         }
-                        println(type)
-                        ContactListPick(type) {
+                        val contacts by viewModel.contacts.collectAsState()
+                        ContactListPick(type, contacts) {
                             val intent = Intent().apply {
                                 data = it
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -79,25 +79,7 @@ class MainActivity : ComponentActivity() {
                             finish()
                         }
                     } else {
-                        val navController = rememberNavController()
-                        NavHost(navController, startDestination = ContactsScreen) {
-                            composable<ContactsScreen> {
-                                ContactList(navController)
-                            }
-                            composable<ContactDetailsScreen> {
-                                ContactDetailsPage(
-                                    navController,
-                                    Json.decodeFromString(it.toRoute<ContactDetailsScreen>().contact)
-                                )
-                            }
-                            composable<EditContactScreen> {
-                                val contact = it.toRoute<EditContactScreen>().contact?.let { Json.decodeFromString<Contact>(it) }
-                                EditContactPage(
-                                    navController,
-                                    contact
-                                )
-                            }
-                        }
+                        Navigation(viewModel)
                     }
                 }
             }
@@ -105,11 +87,58 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Serializable
-object ContactsScreen
+@Composable
+fun NoPermissionsScreen(permissions: Array<String>, setHasPermissions: (Boolean) -> Unit) {
+    val permissionRequestor = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissionsResult ->
+        setHasPermissions(permissionsResult.values.all { it })
+    }
+    LaunchedEffect(Unit) {
+        permissionRequestor.launch(permissions)
+    }
+    Scaffold {
+        Box(
+            modifier = Modifier
+                .padding(it)
+                .fillMaxSize()
+        ) {
+            Button(
+                {
+                    permissionRequestor.launch(permissions)
+                }, Modifier.align(Alignment.Center)
+            ) {
+                Text(text = "Please grant contacts permission")
+            }
+        }
+    }
+}
+
+@Composable
+fun Navigation(viewModel: ContactViewModel) {
+    val backStack = rememberNavBackStack(ContactsScreen)
+    NavDisplay(backStack = backStack, onBack = { backStack.removeLastOrNull() }) { key ->
+        when (key) {
+            is ContactsScreen -> NavEntry(key) {
+                ContactList(backStack, viewModel)
+            }
+
+            is ContactDetailsScreen -> NavEntry(key) {
+                ContactDetailsPage(backStack, viewModel, key.contactId)
+            }
+
+            is EditContactScreen -> NavEntry(key) {
+                EditContactPage(backStack, viewModel, key.contactId)
+            }
+
+            else -> NavEntry(key) { Text("Unknown route") }
+        }
+    }
+}
 
 @Serializable
-data class ContactDetailsScreen(val contact: String)
+object ContactsScreen : NavKey
 
 @Serializable
-data class EditContactScreen(val contact: String?)
+data class ContactDetailsScreen(val contactId: Long) : NavKey
+
+@Serializable
+data class EditContactScreen(val contactId: Long?) : NavKey

@@ -51,7 +51,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
-import androidx.navigation.NavController
+import androidx.navigation3.runtime.NavBackStack
+import androidx.navigation3.runtime.NavKey
 import com.google.i18n.phonenumbers.NumberParseException
 import com.google.i18n.phonenumbers.PhoneNumberUtil
 import kotlinx.coroutines.Dispatchers
@@ -60,13 +61,16 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import kotlin.io.encoding.Base64
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactDetailsPage(navController: NavController, contact: Contact) {
+fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel, contactId: Long) {
+    val contact = viewModel.getContact(contactId)
+    if (contact == null) {
+        Text("Contact not found")
+        return
+    }
     val context = LocalContext.current
     val details = contact.getDetails(context)
     var isFavorite by remember { mutableStateOf(contact.isFavorite) }
@@ -77,7 +81,7 @@ fun ContactDetailsPage(navController: NavController, contact: Contact) {
             TopAppBar(
                 title = { /* No title in the reference image */ },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton({ backStack.removeLast() }) {
                         Icon(painterResource(R.drawable.outline_arrow_back_24),
                             contentDescription = "Back"
                         )
@@ -95,7 +99,7 @@ fun ContactDetailsPage(navController: NavController, contact: Contact) {
                             tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
-                    IconButton(onClick = { navController.navigate(EditContactScreen(Json.encodeToString(contact))) }) {
+                    IconButton(onClick = { backStack.add(EditContactScreen(contact.id)) }) {
                         Icon(painterResource(R.drawable.outline_edit_24),
                             contentDescription = "Edit"
                         )
@@ -104,7 +108,7 @@ fun ContactDetailsPage(navController: NavController, contact: Contact) {
                         scope.launch(Dispatchers.IO) {
                             Contact.delete(context, contact)
                             withContext(Dispatchers.Main) {
-                                navController.popBackStack()
+                                backStack.removeLast()
                             }
                         }
                     }) {
