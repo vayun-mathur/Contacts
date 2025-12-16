@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -177,7 +179,7 @@ fun ContactList(navController: NavController) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactListPick(mimeType: String, onClick: (Uri) -> Unit) {
+fun ContactListPick(mimeType: String?, onClick: (Uri) -> Unit) {
     val context = LocalContext.current
     var contacts by remember { mutableStateOf(emptyList<Contact>()) }
 
@@ -215,8 +217,8 @@ fun ContactListPick(mimeType: String, onClick: (Uri) -> Unit) {
 }
 
 @Composable
-fun ContactItemPick(contact: Contact, mimeType: String, onClick: (Uri) -> Unit) {
-    if(mimeType == ContactsContract.Contacts.CONTENT_ITEM_TYPE || mimeType == ContactsContract.Contacts.CONTENT_TYPE) {
+fun ContactItemPick(contact: Contact, mimeType: String?, onClick: (Uri) -> Unit) {
+    if(mimeType == null || mimeType == ContactsContract.Contacts.CONTENT_ITEM_TYPE || mimeType == ContactsContract.Contacts.CONTENT_TYPE) {
         ContactItem(contact, false, { onClick(Uri.withAppendedPath(
             ContactsContract.Contacts.CONTENT_URI,
             contact.id.toString()
@@ -307,9 +309,10 @@ fun ContactItem(
         Modifier
     }
     Column {
+        val hasDropdown = dropdownList != null && dropdownList.isNotEmpty()
         ListItem(
             modifier = modifier
-                .clip(RoundedCornerShape(16.dp)),
+                .clip(RoundedCornerShape(16.dp, 16.dp, if(hasDropdown) 0.dp else 16.dp, if(hasDropdown) 0.dp else 16.dp)),
             headlineContent = {
                 Text(
                     text = contact.name,
@@ -372,11 +375,18 @@ fun ContactItem(
             )
         )
         dropdownList?.forEachIndexed { idx, it ->
+            Spacer(Modifier.height(4.dp))
             ListItem({
                 Text(text = it)
             }, Modifier.clickable {
                 dropdownListClick(idx)
-            })
+            }.clip(RoundedCornerShape(0.dp, 0.dp, if(idx == dropdownList.size - 1) 16.dp else 0.dp, if(idx == dropdownList.size - 1) 16.dp else 0.dp)), colors = ListItemDefaults.colors(
+                containerColor = if (isSelected) {
+                    MaterialTheme.colorScheme.secondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainer
+                }
+            ))
         }
     }
 }

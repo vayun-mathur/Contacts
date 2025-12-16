@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.provider.ContactsContract
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -64,7 +65,12 @@ class MainActivity : ComponentActivity() {
                     }
                 } else {
                     if(intent.action == Intent.ACTION_PICK || intent.action == Intent.ACTION_GET_CONTENT) {
-                        ContactListPick(intent.type!!) {
+                        var type = intent.type
+                        if(intent.data.toString().contains("phones")) {
+                            type = ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE
+                        }
+                        println(type)
+                        ContactListPick(type) {
                             val intent = Intent().apply {
                                 data = it
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
