@@ -116,7 +116,7 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
             TopAppBar(
                 title = { Text(if (contact == null) "Add contact" else "Edit contact") },
                 navigationIcon = {
-                    IconButton(onClick = { backStack.removeLast() }) {
+                    IconButton(onClick = { backStack.removeAt(backStack.lastIndex) }) {
                         Icon(painterResource(R.drawable.outline_close_24), contentDescription = "Close")
                     }
                 },
@@ -141,7 +141,7 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
                             dates
                         )
                         viewModel.saveContact(newContact, contactDetails)
-                        backStack.removeLast()
+                        backStack.removeAt(backStack.lastIndex)
                     }) {
                         Text("Save")
                     }
@@ -221,7 +221,6 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
             Spacer(Modifier.height(16.dp))
 
             DateDetailsSection(
-                "Dates",
                 dates,
                 painterResource(R.drawable.outline_event_24),
                 listOf(CDKEvent.TYPE_BIRTHDAY, CDKEvent.TYPE_ANNIVERSARY, CDKEvent.TYPE_OTHER)
@@ -268,7 +267,7 @@ fun NamePrefixChooser(namePrefix: String, onNamePrefixChange: (String) -> Unit) 
             painterResource(R.drawable.baseline_arrow_drop_down_24),
             contentDescription = null
         )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenu(expanded, { expanded = false }) {
             namePrefixes.forEach { prefix ->
                 DropdownMenuItem(text = { Text(prefix) }, onClick = {
                     onNamePrefixChange(if(prefix == "None") "" else prefix)
@@ -299,11 +298,11 @@ fun NameSuffixChooser(nameSuffix: String, onNameSuffixChange: (String) -> Unit) 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTime::class)
 @Composable
 private fun ColumnScope.DateDetailsSection(
-    detailType: String,
     details: SnapshotStateList<Event>,
     icon: Painter,
     options: List<Int>
 ) {
+    val detailType = "Dates"
     val context = LocalContext.current
     details.forEachIndexed { index, detail ->
         var openDialog by remember { mutableStateOf(false) }

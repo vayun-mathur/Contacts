@@ -81,7 +81,7 @@ fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewMo
             TopAppBar(
                 title = { /* No title in the reference image */ },
                 navigationIcon = {
-                    IconButton({ backStack.removeLast() }) {
+                    IconButton({ backStack.removeAt(backStack.lastIndex) }) {
                         Icon(painterResource(R.drawable.outline_arrow_back_24),
                             contentDescription = "Back"
                         )
@@ -108,7 +108,7 @@ fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewMo
                         scope.launch(Dispatchers.IO) {
                             Contact.delete(context, contact)
                             withContext(Dispatchers.Main) {
-                                backStack.removeLast()
+                                backStack.removeAt(backStack.lastIndex)
                             }
                         }
                     }) {
