@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,6 +36,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,14 +69,18 @@ import kotlin.io.encoding.Base64
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel, contactId: Long) {
-    val contact = viewModel.getContact(contactId)
+    val contact by viewModel.getContactFlow(contactId).collectAsState(initial = viewModel.getContact(contactId))
+    val details by viewModel.currentContactDetails.collectAsState()
+
+    LaunchedEffect(contactId) {
+        viewModel.loadContactDetails(contactId)
+    }
+
     if (contact == null) {
         Text("Contact not found")
         return
     }
     val context = LocalContext.current
-    val details = contact.getDetails(context)
-    var isFavorite by remember { mutableStateOf(contact.isFavorite) }
     val scope = rememberCoroutineScope()
 
     Scaffold(
@@ -89,24 +96,23 @@ fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewMo
                 },
                 actions = {
                     IconButton(onClick = {
-                        val newFavoriteState = !isFavorite
-                        isFavorite = newFavoriteState
-                        Contact.setFavorite(context, contact.id, newFavoriteState)
+                        val newFavoriteState = !contact!!.isFavorite
+                        Contact.setFavorite(context, contact!!.id, newFavoriteState)
                     }) {
                         Icon(
-                            if (!isFavorite) painterResource(R.drawable.outline_star_24) else painterResource(R.drawable.baseline_star_24),
+                            if (!contact!!.isFavorite) painterResource(R.drawable.outline_star_24) else painterResource(R.drawable.baseline_star_24),
                             contentDescription = "Favorite",
-                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            tint = if (contact!!.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
-                    IconButton(onClick = { backStack.add(EditContactScreen(contact.id)) }) {
+                    IconButton(onClick = { backStack.add(EditContactScreen(contact!!.id)) }) {
                         Icon(painterResource(R.drawable.outline_edit_24),
                             contentDescription = "Edit"
                         )
                     }
                     IconButton(onClick = {
                         scope.launch(Dispatchers.IO) {
-                            Contact.delete(context, contact)
+                            Contact.delete(context, contact!!)
                             withContext(Dispatchers.Main) {
                                 backStack.removeAt(backStack.lastIndex)
                             }
@@ -124,6 +130,12 @@ fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewMo
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
+        if (details == null) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            return@Scaffold
+        }
 
         LazyColumn(
             modifier = Modifier
@@ -135,14 +147,14 @@ fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewMo
         ) {
 
             item {
-                ProfileHeader(contact)
+                ProfileHeader(contact!!)
             }
 
             item {
-                ActionButtonsRow(details.phoneNumbers.firstOrNull()?.number, details.emails.firstOrNull()?.address)
+                ActionButtonsRow(details!!.phoneNumbers.firstOrNull()?.number, details!!.emails.firstOrNull()?.address)
             }
 
-            items(details.phoneNumbers, key = { it.id }) { phone ->
+            items(details!!.phoneNumbers, key = { it.id }) { phone ->
                 DetailItem(
                     icon = painterResource(R.drawable.outline_call_24),
                     data = formatPhoneNumber(phone.number),
@@ -155,14 +167,14 @@ fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewMo
                     }
                 )
             }
-            items(details.emails, key = { it.id }) { email ->
+            items(details!!.emails, key = { it.id }) { email ->
                 DetailItem(
                     icon = painterResource(R.drawable.outline_mail_24),
                     data = email.address,
                     label = email.typeString(context)
                 )
             }
-            items(details.addresses, key = { it.id }) { address ->
+            items(details!!.addresses, key = { it.id }) { address ->
                 DetailItem(
                     icon = painterResource(R.drawable.outline_location_on_24),
                     data = address.formattedAddress,
@@ -176,10 +188,10 @@ fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewMo
                 )
             }
 
-            if(details.dates.isNotEmpty()) {
+            if(details!!.dates.isNotEmpty()) {
                 item {
-                    GroupedSection(title = "About ${contact.firstName}") {
-                        details.dates.forEach { event ->
+                    GroupedSection(title = "About ${contact!!.firstName}") {
+                        details!!.dates.forEach { event ->
                             val eventIcon = when (event.typeString(context).lowercase()) {
                                 "birthday" -> painterResource(R.drawable.outline_cake_24)
                                 else -> painterResource(R.drawable.outline_event_24)

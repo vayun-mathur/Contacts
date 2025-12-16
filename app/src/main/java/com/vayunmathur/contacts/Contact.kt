@@ -109,11 +109,11 @@ data class Contact(
     val name: String
         get() = listOfNotNull(namePrefix.ifEmpty { null }, firstName, middleName.ifEmpty { null }, lastName, nameSuffix.ifEmpty { null }).joinToString(" ")
 
-    fun save(context: Context, details: ContactDetails) {
+    fun save(context: Context, newDetails: ContactDetails, oldDetails: ContactDetails?) {
         if (id == 0L) {
-            insert(context, details)
+            insert(context, newDetails)
         } else {
-            update(context, details)
+            update(context, newDetails, oldDetails)
         }
     }
 
@@ -198,7 +198,7 @@ data class Contact(
         context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
     }
 
-    private fun update(context: Context, details: ContactDetails) {
+    private fun update(context: Context, newDetails: ContactDetails, oldDetails: ContactDetails?) {
         val ops = ArrayList<ContentProviderOperation>()
 
         // Name
@@ -251,14 +251,14 @@ data class Contact(
             )
         }
 
-        val rawContactID = getRawContactId(context)
-        val currentDetails = getDetails(context)
-
-        // Details
-        handleDetailUpdates(ops, currentDetails.phoneNumbers, details.phoneNumbers, rawContactID)
-        handleDetailUpdates(ops, currentDetails.emails, details.emails, rawContactID)
-        handleDetailUpdates(ops, currentDetails.addresses, details.addresses, rawContactID)
-        handleDetailUpdates(ops, currentDetails.dates, details.dates, rawContactID)
+        if (oldDetails != null) {
+            val rawContactID = getRawContactId(context)
+            // Details
+            handleDetailUpdates(ops, oldDetails.phoneNumbers, newDetails.phoneNumbers, rawContactID)
+            handleDetailUpdates(ops, oldDetails.emails, newDetails.emails, rawContactID)
+            handleDetailUpdates(ops, oldDetails.addresses, newDetails.addresses, rawContactID)
+            handleDetailUpdates(ops, oldDetails.dates, newDetails.dates, rawContactID)
+        }
 
         // Favorite
         ops.add(
@@ -348,6 +348,111 @@ data class Contact(
     }
 
     companion object {
+        fun getContact(context: Context, contactId: Long): Contact? {
+            val contentResolver = context.contentResolver
+            val uri = ContactsContract.Contacts.CONTENT_URI
+            val projection = arrayOf(
+                ContactsContract.Contacts._ID,
+                ContactsContract.Contacts.LOOKUP_KEY,
+                ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,
+                ContactsContract.Contacts.PHOTO_THUMBNAIL_URI,
+                ContactsContract.Contacts.STARRED
+            )
+            val cursor = contentResolver.query(uri, projection, "${ContactsContract.Contacts._ID} = ?", arrayOf(contactId.toString()), null)
+
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val lookupKey = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.LOOKUP_KEY))
+                    val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY))
+                    val photoThumbnailUriString = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.PHOTO_THUMBNAIL_URI))
+                    val isFavorite = it.getInt(it.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)) == 1
+                    var photo: String? = null
+                    var namePrefix = ""
+                    var firstName = ""
+                    var middleName = ""
+                    var lastName = ""
+                    var nameSuffix = ""
+                    var companyName = ""
+
+                    val nameCursor = contentResolver.query(
+                        ContactsContract.Data.CONTENT_URI,
+                        arrayOf(
+                            ContactsContract.CommonDataKinds.StructuredName.PREFIX,
+                            ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME,
+                            ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME,
+                            ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME,
+                            ContactsContract.CommonDataKinds.StructuredName.SUFFIX
+                        ),
+                        "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
+                        arrayOf(contactId.toString(), ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE),
+                        null
+                    )
+
+                    nameCursor?.use { nc ->
+                        if (nc.moveToFirst()) {
+                            namePrefix = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.PREFIX)) ?: ""
+                            firstName = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME)) ?: ""
+                            middleName = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME)) ?: ""
+                            lastName = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME)) ?: ""
+                            nameSuffix = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.SUFFIX)) ?: ""
+                        }
+                    }
+
+                    if ((firstName.isEmpty() && lastName.isEmpty()) && displayName != null) {
+                        val parts = displayName.split(" ", limit = 2)
+                        firstName = parts.getOrNull(0) ?: ""
+                        lastName = parts.getOrNull(1) ?: ""
+                    }
+
+                    val organizationCursor = contentResolver.query(
+                        ContactsContract.Data.CONTENT_URI,
+                        arrayOf(ContactsContract.CommonDataKinds.Organization.COMPANY),
+                        "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
+                        arrayOf(contactId.toString(), ContactsContract.CommonDataKinds.Organization.CONTENT_ITEM_TYPE),
+                        null
+                    )
+                    organizationCursor?.use { oc ->
+                        if (oc.moveToFirst()) {
+                            companyName = oc.getString(oc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Organization.COMPANY))
+                        }
+                    }
+
+                    if (photoThumbnailUriString != null) {
+                        val photoUri = photoThumbnailUriString.toUri()
+                        var inputStream: InputStream? = null
+                        try {
+                            inputStream = contentResolver.openInputStream(photoUri)
+                            val photoBmp = BitmapFactory.decodeStream(inputStream)
+
+                            val byteArrayOutputStream = ByteArrayOutputStream()
+                            photoBmp.compress(Bitmap.CompressFormat.JPEG, 100, byteArrayOutputStream)
+                            photo = Base64.encode(byteArrayOutputStream.toByteArray())
+
+
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        } finally {
+                            inputStream?.close()
+                        }
+                    }
+
+                    return Contact(
+                        id = contactId,
+                        lookupKey = lookupKey,
+                        namePrefix = namePrefix,
+                        firstName = firstName,
+                        middleName = middleName,
+                        lastName = lastName,
+                        nameSuffix = nameSuffix,
+                        companyName = companyName,
+                        photo = photo,
+                        isFavorite = isFavorite
+                    )
+                }
+            }
+            return null
+        }
+
         fun setFavorite(context: Context, contactId: Long, isFavorite: Boolean) {
             val contentResolver = context.contentResolver
             val values = ContentValues().apply {
