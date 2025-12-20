@@ -13,9 +13,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -23,6 +25,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +39,7 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import com.vayunmathur.contacts.ui.theme.ContactsTheme
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 class MainActivity : ComponentActivity() {
@@ -64,7 +68,53 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    if (intent.action == Intent.ACTION_PICK || intent.action == Intent.ACTION_GET_CONTENT) {
+                    if ((intent?.scheme == "content" || intent?.scheme == "file") && intent?.type?.contains("vcard") == true && intent?.data != null) {
+                         var showDialog by remember { mutableStateOf(true) }
+                         val scope = rememberCoroutineScope()
+                         
+                         if(showDialog) {
+                             AlertDialog(
+                                 onDismissRequest = {
+                                     showDialog = false
+                                     finish()
+                                 },
+                                 title = { Text("Import Contacts") },
+                                 text = { Text("Do you want to import contacts from this file?") },
+                                 confirmButton = {
+                                     TextButton(onClick = {
+                                         scope.launch {
+                                             try {
+                                                 contentResolver.openInputStream(intent.data!!)?.use { inputStream ->
+                                                     VcfUtils.importContacts(this@MainActivity, inputStream)
+                                                     viewModel.loadContacts()
+                                                 }
+                                             } catch (e: Exception) {
+                                                 e.printStackTrace()
+                                             }
+                                             showDialog = false
+                                             // After import, navigate to the main contact list, clearing the intent to avoid re-triggering
+                                             intent = Intent(this@MainActivity, MainActivity::class.java)
+                                             // We don't finish(), we just let it fall through to Navigation below
+                                         }
+                                     }) {
+                                         Text("Yes")
+                                     }
+                                 },
+                                 dismissButton = {
+                                     TextButton(onClick = {
+                                         showDialog = false
+                                         finish()
+                                     }) {
+                                         Text("No")
+                                     }
+                                 }
+                             )
+                         } else {
+                             // After dialog is dismissed (and confirmed), show normal navigation
+                             Navigation(viewModel)
+                         }
+                    }
+                    else if (intent.action == Intent.ACTION_PICK || intent.action == Intent.ACTION_GET_CONTENT) {
                         var type = intent.type
                         if (intent.data.toString().contains("phones")) {
                             type = ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE

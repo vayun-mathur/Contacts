@@ -42,7 +42,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,7 +57,9 @@ import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import com.google.i18n.phonenumbers.NumberParseException
 import com.google.i18n.phonenumbers.PhoneNumberUtil
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
@@ -97,7 +98,11 @@ fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewMo
                 actions = {
                     IconButton(onClick = {
                         val newFavoriteState = !contact!!.isFavorite
-                        Contact.setFavorite(context, contact!!.id, newFavoriteState)
+                        CoroutineScope(Dispatchers.IO).launch {
+                            Contact.setFavorite(context, contact!!.id, newFavoriteState)
+                            delay(100)
+                            viewModel.loadContactDetails(contactId)
+                        }
                     }) {
                         Icon(
                             if (!contact!!.isFavorite) painterResource(R.drawable.outline_star_24) else painterResource(R.drawable.baseline_star_24),

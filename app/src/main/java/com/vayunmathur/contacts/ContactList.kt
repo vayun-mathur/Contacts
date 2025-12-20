@@ -5,6 +5,8 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.ContactsContract
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -41,6 +43,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
+import kotlinx.coroutines.launch
 import java.util.SortedMap
 import kotlin.io.encoding.Base64
 
@@ -62,6 +66,28 @@ fun ContactList(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel) {
     val contacts by viewModel.contacts.collectAsState()
     var isInSelectionMode by remember { mutableStateOf(false) }
     var selectedContactIds by remember { mutableStateOf(emptySet<Long>()) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/vcard"),
+        onResult = { uri ->
+            uri?.let {
+                scope.launch {
+                    try {
+                        context.contentResolver.openOutputStream(it)?.use { outputStream ->
+                            val contactsToExport = contacts.filter { contact -> selectedContactIds.contains(contact.id) }
+                            VcfUtils.exportContacts(context, contactsToExport, outputStream)
+                        }
+                        isInSelectionMode = false
+                        selectedContactIds = emptySet()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        }
+    )
 
     BackHandler(enabled = isInSelectionMode) {
         isInSelectionMode = false
@@ -96,6 +122,13 @@ fun ContactList(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel) {
                 title = { Text("Contacts") },
                 actions = {
                     if (isInSelectionMode) {
+                        IconButton(onClick = {
+                            exportLauncher.launch("contacts.vcf")
+                        }) {
+                            Icon(painterResource(R.drawable.upload_24px), // Using Upload for export
+                                contentDescription = "Export selected contacts"
+                            )
+                        }
                         IconButton(onClick = {
                             viewModel.deleteContacts(selectedContactIds)
                             isInSelectionMode = false

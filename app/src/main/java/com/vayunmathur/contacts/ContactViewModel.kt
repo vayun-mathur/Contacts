@@ -40,11 +40,12 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
 
     fun loadContactDetails(contactId: Long) {
         viewModelScope.launch {
-            val contact = getContact(contactId)
+            val contact = Contact.getContact(getApplication(), contactId)
             if (contact != null) {
                 _currentContactDetails.value = withContext(Dispatchers.IO) {
                     contact.getDetails(getApplication())
                 }
+                _contacts.value = contacts.value.map { if (it.id == contactId) contact else it }
             } else {
                 _currentContactDetails.value = null
             }
