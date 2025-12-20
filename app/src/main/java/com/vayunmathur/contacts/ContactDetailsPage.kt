@@ -52,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
@@ -65,6 +66,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
+import java.io.File
 import kotlin.io.encoding.Base64
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -113,6 +115,24 @@ fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewMo
                     IconButton(onClick = { backStack.add(EditContactScreen(contact!!.id)) }) {
                         Icon(painterResource(R.drawable.outline_edit_24),
                             contentDescription = "Edit"
+                        )
+                    }
+                    IconButton(onClick = {
+                        scope.launch(Dispatchers.IO) {
+                            val vcfFile = File(context.cacheDir, "${contact!!.name.replace(' ', '_')}.vcf")
+                            vcfFile.outputStream().use { outputStream ->
+                                VcfUtils.exportContacts(context, listOf(contact!!), outputStream)
+                            }
+                            val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", vcfFile)
+                            val intent = Intent(Intent.ACTION_SEND)
+                            intent.type = "text/x-vcard"
+                            intent.putExtra(Intent.EXTRA_STREAM, uri)
+                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            context.startActivity(Intent.createChooser(intent, "Share Contact"))
+                        }
+                    }) {
+                        Icon(painterResource(R.drawable.outline_share_24),
+                            contentDescription = "Share"
                         )
                     }
                     IconButton(onClick = {
