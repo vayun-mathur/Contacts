@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     kotlin("plugin.serialization") version "2.2.21"
 }
@@ -12,7 +11,6 @@ android {
     defaultConfig {
         applicationId = "com.vayunmathur.contacts"
         minSdk = 30
-        targetSdk = 36
         versionCode = 3
         versionName = "1.2"
 
@@ -27,18 +25,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
         }
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-    kotlin {
-        jvmToolchain(11)
     }
     buildFeatures {
         compose = true
