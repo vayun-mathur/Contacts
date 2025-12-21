@@ -22,11 +22,6 @@ android {
         includeInBundle = false
     }
 
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-        }
-    }
     buildFeatures {
         compose = true
     }
