@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.view.Window
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,9 +15,11 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -54,8 +57,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
-import androidx.navigation3.runtime.NavBackStack
-import androidx.navigation3.runtime.NavKey
 import com.google.i18n.phonenumbers.NumberParseException
 import com.google.i18n.phonenumbers.PhoneNumberUtil
 import kotlinx.coroutines.CoroutineScope
@@ -71,7 +72,14 @@ import kotlin.io.encoding.Base64
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel, contactId: Long) {
+fun ContactDetailsPage(
+    viewModel: ContactViewModel,
+    contactId: Long,
+    onBack: () -> Unit,
+    onEdit: (Long) -> Unit,
+    onDelete: () -> Unit,
+    showBackButton: Boolean = true
+) {
     val contact by viewModel.getContactFlow(contactId).collectAsState(initial = viewModel.getContact(contactId))
     val details by viewModel.currentContactDetails.collectAsState()
 
@@ -80,23 +88,28 @@ fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewMo
     }
 
     if (contact == null) {
-        Text("Contact not found")
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Contact not found")
+        }
         return
     }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     Scaffold(
+        contentWindowInsets = WindowInsets(),
         topBar = {
             TopAppBar(
                 title = { /* No title in the reference image */ },
-                navigationIcon = {
-                    IconButton({ backStack.removeAt(backStack.lastIndex) }) {
-                        Icon(painterResource(R.drawable.outline_arrow_back_24),
-                            contentDescription = "Back"
-                        )
+                navigationIcon = if (showBackButton) {
+                    @Composable {
+                        IconButton(onClick = onBack) {
+                            Icon(painterResource(R.drawable.outline_arrow_back_24),
+                                contentDescription = "Back"
+                            )
+                        }
                     }
-                },
+                } else {{}},
                 actions = {
                     IconButton(onClick = {
                         val newFavoriteState = !contact!!.isFavorite
@@ -112,7 +125,7 @@ fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewMo
                             tint = if (contact!!.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
-                    IconButton(onClick = { backStack.add(EditContactScreen(contact!!.id)) }) {
+                    IconButton(onClick = { onEdit(contact!!.id) }) {
                         Icon(painterResource(R.drawable.outline_edit_24),
                             contentDescription = "Edit"
                         )
@@ -139,7 +152,7 @@ fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewMo
                         scope.launch(Dispatchers.IO) {
                             Contact.delete(context, contact!!)
                             withContext(Dispatchers.Main) {
-                                backStack.removeAt(backStack.lastIndex)
+                                onDelete()
                             }
                         }
                     }) {
@@ -166,7 +179,7 @@ fun ContactDetailsPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewMo
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {

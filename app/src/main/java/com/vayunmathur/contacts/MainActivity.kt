@@ -10,14 +10,29 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.layout.PaneScaffoldDirective
+import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
+import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
+import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -29,13 +44,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import com.vayunmathur.contacts.ui.theme.ContactsTheme
@@ -162,25 +179,59 @@ fun NoPermissionsScreen(permissions: Array<String>, setHasPermissions: (Boolean)
     }
 }
 
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun Navigation(viewModel: ContactViewModel) {
     val backStack = rememberNavBackStack(ContactsScreen)
-    NavDisplay(backStack = backStack, onBack = { backStack.removeLastOrNull() }) { key ->
-        when (key) {
-            is ContactsScreen -> NavEntry(key) {
-                ContactList(backStack, viewModel)
-            }
+    val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>()
 
-            is ContactDetailsScreen -> NavEntry(key) {
-                ContactDetailsPage(backStack, viewModel, key.contactId)
+    Scaffold(contentWindowInsets = WindowInsets()) { paddingValues ->
+        NavDisplay(modifier = Modifier.padding(paddingValues),
+            backStack = backStack,
+            onBack = { backStack.removeLastOrNull() },
+            sceneStrategy = listDetailStrategy,
+            entryProvider = entryProvider {
+                entry<ContactsScreen>(metadata = ListDetailSceneStrategy.listPane(detailPlaceholder = {
+                    Column(
+                        Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("Select a contact to view details")
+                    }
+                })) {
+                    ContactList(
+                        viewModel = viewModel,
+                        backStack = backStack,
+                        onContactClick = { contact ->
+                            if (backStack.last() is ContactDetailsScreen) {
+                                backStack.removeAt(backStack.lastIndex)
+                            }
+                            backStack.add(ContactDetailsScreen(contact.id))
+                        },
+                        onAddContactClick = {
+                            if(backStack.last() is ContactDetailsScreen) {
+                                backStack.removeAt(backStack.lastIndex)
+                            }
+                            backStack.add(EditContactScreen(null))
+                        }
+                    )
+                }
+                entry<ContactDetailsScreen>(metadata = ListDetailSceneStrategy.detailPane()) { key ->
+                    ContactDetailsPage(
+                        viewModel = viewModel,
+                        contactId = key.contactId,
+                        onBack = { backStack.removeLastOrNull() },
+                        onEdit = { id -> backStack.add(EditContactScreen(id)) },
+                        onDelete = { backStack.removeLastOrNull() },
+                        showBackButton = true // We can check window size here if we want to hide it dynamically, or Scene can handle it
+                    )
+                }
+                entry<EditContactScreen>(metadata = ListDetailSceneStrategy.detailPane()) { key ->
+                    EditContactPage(backStack, viewModel, key.contactId)
+                }
             }
-
-            is EditContactScreen -> NavEntry(key) {
-                EditContactPage(backStack, viewModel, key.contactId)
-            }
-
-            else -> NavEntry(key) { Text("Unknown route") }
-        }
+        )
     }
 }
 

@@ -18,9 +18,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -62,7 +64,12 @@ import kotlin.io.encoding.Base64
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactList(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel) {
+fun ContactList(
+    viewModel: ContactViewModel,
+    backStack: NavBackStack<NavKey>,
+    onContactClick: (Contact) -> Unit,
+    onAddContactClick: () -> Unit
+) {
     val contacts by viewModel.contacts.collectAsState()
     var isInSelectionMode by remember { mutableStateOf(false) }
     var selectedContactIds by remember { mutableStateOf(emptySet<Long>()) }
@@ -112,11 +119,12 @@ fun ContactList(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel) {
             }
             selectedContactIds = newSelection
         } else {
-            backStack.add(ContactDetailsScreen(contact.id))
+            onContactClick(contact)
         }
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(),
         topBar = {
             TopAppBar(
                 title = { Text("Contacts") },
@@ -143,14 +151,16 @@ fun ContactList(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel) {
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { backStack.add(EditContactScreen(null)) }) {
-                Icon(Icons.Default.Add, contentDescription = "Add contact")
+            if(backStack.last() !is EditContactScreen) {
+                FloatingActionButton(onClick = { onAddContactClick() }) {
+                    Icon(Icons.Default.Add, contentDescription = "Add contact")
+                }
             }
         }
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(paddingValues),
-            contentPadding = PaddingValues(horizontal = 16.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (favorites.isNotEmpty()) {
