@@ -15,18 +15,26 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeContent
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.layout.PaneScaffoldDirective
@@ -44,6 +52,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -179,14 +188,15 @@ fun NoPermissionsScreen(permissions: Array<String>, setHasPermissions: (Boolean)
     }
 }
 
-@OptIn(ExperimentalMaterial3AdaptiveApi::class)
+@OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun Navigation(viewModel: ContactViewModel) {
     val backStack = rememberNavBackStack(ContactsScreen)
     val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>()
 
-    Scaffold(contentWindowInsets = WindowInsets()) { paddingValues ->
-        NavDisplay(modifier = Modifier.padding(paddingValues),
+    Scaffold(contentWindowInsets = WindowInsets.displayCutout
+    ) { paddingValues ->
+        NavDisplay(modifier = Modifier.padding(paddingValues).consumeWindowInsets(paddingValues),
             backStack = backStack,
             onBack = { backStack.removeLastOrNull() },
             sceneStrategy = listDetailStrategy,
@@ -204,10 +214,11 @@ fun Navigation(viewModel: ContactViewModel) {
                         viewModel = viewModel,
                         backStack = backStack,
                         onContactClick = { contact ->
-                            if (backStack.last() is ContactDetailsScreen) {
-                                backStack.removeAt(backStack.lastIndex)
+                            if(backStack.last() is ContactDetailsScreen || backStack.last() is EditContactScreen) {
+                                backStack[backStack.lastIndex] = ContactDetailsScreen(contact.id)
+                            } else {
+                                backStack.add(ContactDetailsScreen(contact.id))
                             }
-                            backStack.add(ContactDetailsScreen(contact.id))
                         },
                         onAddContactClick = {
                             if(backStack.last() is ContactDetailsScreen) {
@@ -224,7 +235,7 @@ fun Navigation(viewModel: ContactViewModel) {
                         onBack = { backStack.removeLastOrNull() },
                         onEdit = { id -> backStack.add(EditContactScreen(id)) },
                         onDelete = { backStack.removeLastOrNull() },
-                        showBackButton = true // We can check window size here if we want to hide it dynamically, or Scene can handle it
+                        showBackButton = true
                     )
                 }
                 entry<EditContactScreen>(metadata = ListDetailSceneStrategy.detailPane()) { key ->

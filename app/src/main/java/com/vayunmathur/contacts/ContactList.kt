@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import java.util.SortedMap
 import kotlin.io.encoding.Base64
 
@@ -71,23 +72,26 @@ fun ContactList(
     onAddContactClick: () -> Unit
 ) {
     val contacts by viewModel.contacts.collectAsState()
-    var isInSelectionMode by remember { mutableStateOf(false) }
-    var selectedContactIds by remember { mutableStateOf(emptySet<Long>()) }
+
+    val (favorites, otherContacts) = contacts.partition { it.isFavorite }
+
+    val groupedContacts: SortedMap<Char, List<Contact>> = otherContacts
+        .groupBy { it.name.first().uppercaseChar() }
+        .toSortedMap()
+
+
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val coroutineScope = rememberCoroutineScope()
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/vcard"),
         onResult = { uri ->
             uri?.let {
-                scope.launch {
+                coroutineScope.launch {
                     try {
                         context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                            val contactsToExport = contacts.filter { contact -> selectedContactIds.contains(contact.id) }
-                            VcfUtils.exportContacts(context, contactsToExport, outputStream)
+                            VcfUtils.exportContacts(context, contacts, outputStream)
                         }
-                        isInSelectionMode = false
-                        selectedContactIds = emptySet()
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -96,60 +100,25 @@ fun ContactList(
         }
     )
 
-    BackHandler(enabled = isInSelectionMode) {
-        isInSelectionMode = false
-        selectedContactIds = emptySet()
-    }
-
-    val (favorites, otherContacts) = contacts.partition { it.isFavorite }
-
-    val groupedContacts: SortedMap<Char, List<Contact>> = otherContacts
-        .groupBy { it.name.first().uppercaseChar() }
-        .toSortedMap()
-
-    val onClick = { contact: Contact ->
-        if (isInSelectionMode) {
-            val newSelection = if (selectedContactIds.contains(contact.id)) {
-                selectedContactIds - contact.id
-            } else {
-                selectedContactIds + contact.id
-            }
-            if (newSelection.isEmpty()) {
-                isInSelectionMode = false
-            }
-            selectedContactIds = newSelection
-        } else {
-            onContactClick(contact)
-        }
+    val selectedID = when(backStack.last()) {
+        is ContactDetailsScreen -> (backStack.last() as ContactDetailsScreen).contactId
+        is EditContactScreen -> (backStack.last() as EditContactScreen).contactId
+        else -> null
     }
 
     Scaffold(
-        contentWindowInsets = WindowInsets(),
         topBar = {
-            TopAppBar(
-                title = { Text("Contacts") },
-                actions = {
-                    if (isInSelectionMode) {
-                        IconButton(onClick = {
-                            exportLauncher.launch("contacts.vcf")
-                        }) {
-                            Icon(painterResource(R.drawable.upload_24px), // Using Upload for export
-                                contentDescription = "Export selected contacts"
-                            )
-                        }
-                        IconButton(onClick = {
-                            viewModel.deleteContacts(selectedContactIds)
-                            isInSelectionMode = false
-                            selectedContactIds = emptySet()
-                        }) {
-                            Icon(painterResource(R.drawable.outline_delete_24),
-                                contentDescription = "Delete selected contacts"
-                            )
-                        }
-                    }
+            TopAppBar({Text("Contacts")}, actions = {
+                IconButton(onClick = {
+                    exportLauncher.launch("contacts.vcf")
+                }) {
+                    Icon(painterResource(R.drawable.upload_24px), // Using Upload for export
+                        contentDescription = "Export selected contacts"
+                    )
                 }
-            )
+            })
         },
+        contentWindowInsets = WindowInsets(),
         floatingActionButton = {
             if(backStack.last() !is EditContactScreen) {
                 FloatingActionButton(onClick = { onAddContactClick() }) {
@@ -168,12 +137,8 @@ fun ContactList(
                 items(favorites, key = { it.id }) { contact ->
                     ContactItem(
                         contact = contact,
-                        isSelected = selectedContactIds.contains(contact.id),
-                        onClick = { onClick(contact) },
-                        onLongClick = {
-                            isInSelectionMode = true
-                            selectedContactIds = selectedContactIds + contact.id
-                        }
+                        isSelected = selectedID == contact.id,
+                        onClick = { onContactClick(contact) },
                     )
                 }
             }
@@ -183,12 +148,8 @@ fun ContactList(
                 items(contactsInGroup, key = { it.id }) { contact ->
                     ContactItem(
                         contact = contact,
-                        isSelected = selectedContactIds.contains(contact.id),
-                        onClick = { onClick(contact) },
-                        onLongClick = {
-                            isInSelectionMode = true
-                            selectedContactIds = selectedContactIds + contact.id
-                        }
+                        isSelected = selectedID == contact.id,
+                        onClick = { onContactClick(contact) },
                     )
                 }
             }
@@ -235,7 +196,7 @@ fun ContactItemPick(contact: Contact, mimeType: String?, onClick: (Uri) -> Unit)
         ContactItem(contact, false, { onClick(Uri.withAppendedPath(
             ContactsContract.Contacts.CONTENT_URI,
             contact.id.toString()
-        )) }, onLongClick = {})
+        )) })
     } else {
         val details = contact.getDetails(LocalContext.current)
         val relevantList = when(mimeType) {
@@ -250,7 +211,7 @@ fun ContactItemPick(contact: Contact, mimeType: String?, onClick: (Uri) -> Unit)
             ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE -> ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_URI
             else -> throw IllegalArgumentException("Unsupported MIME type: $mimeType")
         }
-        ContactItem(contact, false, {  }, onLongClick = {}, dropdownList = relevantList.map { it.value }, dropdownListClick = { index ->
+        ContactItem(contact, false, {  }, dropdownList = relevantList.map { it.value }, dropdownListClick = { index ->
             onClick(Uri.withAppendedPath(
                 baseURI,
                 relevantList[index].id.toString()
@@ -309,14 +270,12 @@ fun ContactItem(
     contact: Contact,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
     dropdownList: List<String>? = null,
     dropdownListClick: (Int) -> Unit = {}
 ) {
     val modifier = if (dropdownList == null) {
         Modifier.combinedClickable(
             onClick = onClick,
-            onLongClick = onLongClick
         )
     } else {
         Modifier
