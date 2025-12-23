@@ -348,7 +348,8 @@ data class Contact(
     }
 
     companion object {
-        fun getContact(context: Context, contactId: Long): Contact? {
+
+        private fun getContacts(context: Context, contactId: Long?): List<Contact> {
             val contentResolver = context.contentResolver
             val uri = ContactsContract.Contacts.CONTENT_URI
             val projection = arrayOf(
@@ -358,10 +359,13 @@ data class Contact(
                 ContactsContract.Contacts.PHOTO_THUMBNAIL_URI,
                 ContactsContract.Contacts.STARRED
             )
-            val cursor = contentResolver.query(uri, projection, "${ContactsContract.Contacts._ID} = ?", arrayOf(contactId.toString()), null)
+            val cursor = contentResolver.query(uri, projection, if(contactId == null) null else "${ContactsContract.Contacts._ID} = ?", arrayOf(contactId.toString()), null)
+
+            val contacts = mutableListOf<Contact>()
 
             cursor?.use {
                 if (it.moveToFirst()) {
+                    val id = it.getLong(it.getColumnIndexOrThrow(ContactsContract.Contacts._ID))
                     val lookupKey = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.LOOKUP_KEY))
                     val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY))
                     val photoThumbnailUriString = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.PHOTO_THUMBNAIL_URI))
@@ -436,8 +440,8 @@ data class Contact(
                         }
                     }
 
-                    return Contact(
-                        id = contactId,
+                    contacts += Contact(
+                        id = id,
                         lookupKey = lookupKey,
                         namePrefix = namePrefix,
                         firstName = firstName,
@@ -450,141 +454,33 @@ data class Contact(
                     )
                 }
             }
-            return null
+            return contacts
         }
 
         fun setFavorite(context: Context, contactId: Long, isFavorite: Boolean) {
-            val contentResolver = context.contentResolver
-            val values = ContentValues().apply {
-                put(ContactsContract.Contacts.STARRED, if (isFavorite) 1 else 0)
-            }
-            contentResolver.update(
+            context.contentResolver.update(
                 ContactsContract.Contacts.CONTENT_URI,
-                values,
+                ContentValues().apply {
+                    put(ContactsContract.Contacts.STARRED, if (isFavorite) 1 else 0)
+                },
                 "${ContactsContract.Contacts._ID} = ?",
                 arrayOf(contactId.toString())
             )
         }
+
+        fun getContact(context: Context, contactId: Long): Contact? {
+            return getContacts(context, contactId).firstOrNull()
+        }
+
         fun getAllContacts(context: Context): List<Contact> {
-            val contacts = mutableListOf<Contact>()
-            val contentResolver = context.contentResolver
-            val uri = ContactsContract.Contacts.CONTENT_URI
-            val projection = arrayOf(
-                ContactsContract.Contacts._ID,
-                ContactsContract.Contacts.LOOKUP_KEY,
-                ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,
-                ContactsContract.Contacts.PHOTO_THUMBNAIL_URI,
-                ContactsContract.Contacts.STARRED
-            )
-            val cursor = contentResolver.query(uri, projection, null, null, null)
-
-            cursor?.use {
-                while (it.moveToNext()) {
-                    val contactId = it.getLong(it.getColumnIndexOrThrow(ContactsContract.Contacts._ID))
-                    val lookupKey = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.LOOKUP_KEY))
-                    val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY))
-                    val photoThumbnailUriString = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.PHOTO_THUMBNAIL_URI))
-                    val isFavorite = it.getInt(it.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)) == 1
-                    var photo: String? = null
-                    var namePrefix = ""
-                    var firstName = ""
-                    var middleName = ""
-                    var lastName = ""
-                    var nameSuffix = ""
-                    var companyName = ""
-
-                    val nameCursor = contentResolver.query(
-                        ContactsContract.Data.CONTENT_URI,
-                        arrayOf(
-                            ContactsContract.CommonDataKinds.StructuredName.PREFIX,
-                            ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME,
-                            ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME,
-                            ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME,
-                            ContactsContract.CommonDataKinds.StructuredName.SUFFIX
-                        ),
-                        "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
-                        arrayOf(contactId.toString(), ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE),
-                        null
-                    )
-
-                    nameCursor?.use { nc ->
-                        if (nc.moveToFirst()) {
-                            namePrefix = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.PREFIX)) ?: ""
-                            firstName = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME)) ?: ""
-                            middleName = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME)) ?: ""
-                            lastName = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME)) ?: ""
-                            nameSuffix = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.SUFFIX)) ?: ""
-                        }
-                    }
-
-                    if ((firstName.isEmpty() && lastName.isEmpty()) && displayName != null) {
-                        val parts = displayName.split(" ", limit = 2)
-                        firstName = parts.getOrNull(0) ?: ""
-                        lastName = parts.getOrNull(1) ?: ""
-                    }
-
-                    val organizationCursor = contentResolver.query(
-                        ContactsContract.Data.CONTENT_URI,
-                        arrayOf(ContactsContract.CommonDataKinds.Organization.COMPANY),
-                        "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
-                        arrayOf(contactId.toString(), ContactsContract.CommonDataKinds.Organization.CONTENT_ITEM_TYPE),
-                        null
-                    )
-                    organizationCursor?.use { oc ->
-                        if (oc.moveToFirst()) {
-                            companyName = oc.getString(oc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Organization.COMPANY))
-                        }
-                    }
-
-                    if (photoThumbnailUriString != null) {
-                        val photoUri = photoThumbnailUriString.toUri()
-                        var inputStream: InputStream? = null
-                        try {
-                            inputStream = contentResolver.openInputStream(photoUri)
-                            val photoBmp = BitmapFactory.decodeStream(inputStream)
-
-                            val byteArrayOutputStream = ByteArrayOutputStream()
-                            photoBmp.compress(Bitmap.CompressFormat.JPEG, 100, byteArrayOutputStream)
-                            photo = Base64.encode(byteArrayOutputStream.toByteArray())
-
-
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        } finally {
-                            inputStream?.close()
-                        }
-                    }
-
-                    contacts.add(
-                        Contact(
-                            id = contactId,
-                            lookupKey = lookupKey,
-                            namePrefix = namePrefix,
-                            firstName = firstName,
-                            middleName = middleName,
-                            lastName = lastName,
-                            nameSuffix = nameSuffix,
-                            companyName = companyName,
-                            photo = photo,
-                            isFavorite = isFavorite
-                        )
-                    )
-                }
-            }
-            return contacts
+            return getContacts(context, null)
         }
 
         fun delete(context: Context, contact: Contact) {
-            val contentResolver = context.contentResolver
-//            println(contentResolver.delete(
-//                ContactsContract.Data.CONTENT_URI,
-//                "${ContactsContract.Data.RAW_CONTACT_ID} = ?",
-//                arrayOf(contactId.toString())
-//            ))
-            println(contentResolver.delete(
+            context.contentResolver.delete(
                 Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_LOOKUP_URI, contact.lookupKey),
                 null, null
-            ))
+            )
         }
     }
 }
