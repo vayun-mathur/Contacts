@@ -17,9 +17,6 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
     private val _contacts = MutableStateFlow<List<Contact>>(emptyList())
     val contacts: StateFlow<List<Contact>> = _contacts.asStateFlow()
 
-    private val _currentContactDetails = MutableStateFlow<ContactDetails?>(null)
-    val currentContactDetails: StateFlow<ContactDetails?> = _currentContactDetails.asStateFlow()
-
     init {
         loadContacts()
     }
@@ -38,16 +35,18 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         return contacts.map { contacts -> contacts.find { it.id == contactId } }
     }
 
-    fun loadContactDetails(contactId: Long) {
-        viewModelScope.launch {
-            val contact = Contact.getContact(getApplication(), contactId)
-            if (contact != null) {
-                _currentContactDetails.value = withContext(Dispatchers.IO) {
-                    contact.getDetails(getApplication())
+    fun loadContact(contactId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val updatedContact = Contact.getContact(getApplication(), contactId)
+            withContext(Dispatchers.Main) {
+                if (updatedContact != null) {
+                    val index = _contacts.value.indexOfFirst { it.id == updatedContact.id }
+                    if (index != -1) {
+                        val newList = _contacts.value.toMutableList()
+                        newList[index] = updatedContact
+                        _contacts.value = newList
+                    }
                 }
-                _contacts.value = contacts.value.map { if (it.id == contactId) contact else it }
-            } else {
-                _currentContactDetails.value = null
             }
         }
     }
@@ -55,7 +54,8 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
     fun saveContact(contact: Contact, details: ContactDetails) {
         viewModelScope.launch(Dispatchers.IO) {
             val contactId = contact.id
-            contact.save(getApplication(), details, currentContactDetails.value)
+            val oldDetails = contacts.value.find { it.id == contactId }?.details ?: ContactDetails(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+            contact.save(getApplication(), details, oldDetails)
 
             if (contactId == 0L) {
                 loadContacts()
@@ -71,7 +71,6 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
                         }
                     }
                 }
-                loadContactDetails(contactId)
             }
         }
     }

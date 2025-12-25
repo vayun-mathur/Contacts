@@ -80,11 +80,7 @@ fun ContactDetailsPage(
     showBackButton: Boolean = true
 ) {
     val contact by viewModel.getContactFlow(contactId).collectAsState(initial = viewModel.getContact(contactId))
-    val details by viewModel.currentContactDetails.collectAsState()
-
-    LaunchedEffect(contactId) {
-        viewModel.loadContactDetails(contactId)
-    }
+    val details = contact?.details
 
     if (contact == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -115,7 +111,7 @@ fun ContactDetailsPage(
                         CoroutineScope(Dispatchers.IO).launch {
                             Contact.setFavorite(context, contact!!.id, newFavoriteState)
                             delay(100)
-                            viewModel.loadContactDetails(contactId)
+                            viewModel.loadContact(contactId)
                         }
                     }) {
                         Icon(
@@ -188,10 +184,10 @@ fun ContactDetailsPage(
             }
 
             item {
-                ActionButtonsRow(details!!.phoneNumbers.firstOrNull()?.number, details!!.emails.firstOrNull()?.address)
+                ActionButtonsRow(details.phoneNumbers.firstOrNull()?.number, details.emails.firstOrNull()?.address)
             }
 
-            items(details!!.phoneNumbers, key = { it.id }) { phone ->
+            items(details.phoneNumbers, key = { it.id }) { phone ->
                 DetailItem(
                     icon = painterResource(R.drawable.outline_call_24),
                     data = formatPhoneNumber(phone.number),
@@ -204,14 +200,14 @@ fun ContactDetailsPage(
                     }
                 )
             }
-            items(details!!.emails, key = { it.id }) { email ->
+            items(details.emails, key = { it.id }) { email ->
                 DetailItem(
                     icon = painterResource(R.drawable.outline_mail_24),
                     data = email.address,
                     label = email.typeString(context)
                 )
             }
-            items(details!!.addresses, key = { it.id }) { address ->
+            items(details.addresses, key = { it.id }) { address ->
                 DetailItem(
                     icon = painterResource(R.drawable.outline_location_on_24),
                     data = address.formattedAddress,
@@ -225,10 +221,10 @@ fun ContactDetailsPage(
                 )
             }
 
-            if(details!!.dates.isNotEmpty()) {
+            if(details.dates.isNotEmpty()) {
                 item {
                     GroupedSection(title = "About ${contact!!.firstName}") {
-                        details!!.dates.forEach { event ->
+                        details.dates.forEach { event ->
                             val eventIcon = when (event.typeString(context).lowercase()) {
                                 "birthday" -> painterResource(R.drawable.outline_cake_24)
                                 else -> painterResource(R.drawable.outline_event_24)
@@ -270,7 +266,7 @@ fun ProfileHeader(contact: Contact) {
         ) {
             contact.photo?.let {
                 val bitmap by remember(it) {
-                    mutableStateOf<Bitmap>(BitmapFactory.decodeByteArray(Base64.decode(it), 0, Base64.decode(it).size)) }
+                    mutableStateOf<Bitmap>(BitmapFactory.decodeByteArray(Base64.decode(it.photo), 0, Base64.decode(it.photo).size)) }
                 Image(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = "${contact.name} photo",

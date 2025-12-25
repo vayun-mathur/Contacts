@@ -77,6 +77,7 @@ import kotlin.time.Instant
 @Composable
 fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel, contactId: Long?) {
     val contact = contactId?.let { viewModel.getContact(it) }
+    val details = contact?.details
     val context = LocalContext.current
 
     var namePrefix by remember { mutableStateOf(contact?.namePrefix ?: "") }
@@ -93,7 +94,8 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
             val bitmap = BitmapFactory.decodeStream(inputStream)
             val byteArrayOutputStream = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, 100, byteArrayOutputStream)
-            photo = Base64.encode(byteArrayOutputStream.toByteArray())
+            val value = Base64.encode(byteArrayOutputStream.toByteArray())
+            photo = photo?.withValue(value) ?: Photo(0, value, 0)
         }
     }
 
@@ -104,7 +106,6 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
 
     LaunchedEffect(Unit) {
         contact?.let { contact ->
-            val details = contact.getDetails(context)
             phoneNumbers.addAll(details.phoneNumbers)
             emails.addAll(details.emails)
             dates.addAll(details.dates)

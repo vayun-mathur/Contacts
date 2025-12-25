@@ -140,7 +140,7 @@ object VcfUtils {
             }
             
             for ((contact, details) in contactsToSave) {
-                contact.save(context, details, null)
+                contact.save(context, details, ContactDetails(listOf(), listOf(), listOf(), listOf()))
             }
          }
     }

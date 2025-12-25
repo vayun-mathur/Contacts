@@ -198,7 +198,7 @@ fun ContactItemPick(contact: Contact, mimeType: String?, onClick: (Uri) -> Unit)
             contact.id.toString()
         )) })
     } else {
-        val details = contact.getDetails(LocalContext.current)
+        val details = contact.details
         val relevantList = when(mimeType) {
             ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE -> details.emails
             ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE -> details.phoneNumbers
@@ -301,9 +301,9 @@ fun ContactItem(
                         val bitmap by remember(it) {
                             mutableStateOf<Bitmap>(
                                 BitmapFactory.decodeByteArray(
-                                    Base64.decode(it),
+                                    Base64.decode(it.photo),
                                     0,
-                                    Base64.decode(it).size
+                                    Base64.decode(it.photo).size
                                 )
                             )
                         }
