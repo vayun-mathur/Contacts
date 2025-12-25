@@ -59,6 +59,7 @@ import com.google.i18n.phonenumbers.PhoneNumberUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
@@ -77,7 +78,7 @@ fun ContactDetailsPage(
     onDelete: () -> Unit,
     showBackButton: Boolean = true
 ) {
-    val contact by viewModel.getContactFlow(contactId).collectAsState(initial = viewModel.getContact(contactId))
+    val contact by viewModel.getContactFlow(contactId).filterNotNull().collectAsState(initial = viewModel.getContact(contactId))
     val details = contact?.details
 
     if (contact == null) {
@@ -107,9 +108,8 @@ fun ContactDetailsPage(
                     IconButton(onClick = {
                         val newFavoriteState = !contact!!.isFavorite
                         CoroutineScope(Dispatchers.IO).launch {
-                            Contact.setFavorite(context, contact!!.id, newFavoriteState)
-                            delay(100)
-                            viewModel.loadContact(contactId)
+                            val newContact = contact!!.copy(isFavorite = newFavoriteState)
+                            viewModel.saveContact(newContact)
                         }
                     }) {
                         Icon(
@@ -143,10 +143,8 @@ fun ContactDetailsPage(
                     }
                     IconButton(onClick = {
                         scope.launch(Dispatchers.IO) {
+                            onDelete()
                             viewModel.deleteContact(contact!!)
-                            withContext(Dispatchers.Main) {
-                                onDelete()
-                            }
                         }
                     }) {
                         Icon(painterResource(R.drawable.outline_delete_24),
@@ -247,7 +245,7 @@ fun ContactDetailsPage(
                 }
             }
             
-            if (contact!!.note.content.isNotEmpty()) {
+            if (contact?.note?.content?.isNotEmpty() == true) {
                 item {
                     GroupedSection(title = "Note") {
                         Text(
@@ -291,7 +289,7 @@ fun ProfileHeader(contact: Contact) {
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = contact.name.value.first().uppercase(),
+                        text = contact.name.value.firstOrNull()?.uppercase()?:"",
                         color = Color.White,
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold

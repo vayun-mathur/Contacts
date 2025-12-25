@@ -68,6 +68,7 @@ object VcfUtils {
                 } else if (trimmedLine.startsWith("END:VCARD")) {
                     currentContact?.let { builder ->
                         val newContact = Contact(
+                            false,
                             id = 0,
                             lookupKey = "",
                             isFavorite = false,

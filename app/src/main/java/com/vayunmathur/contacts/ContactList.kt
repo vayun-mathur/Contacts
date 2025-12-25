@@ -69,7 +69,9 @@ fun ContactList(
 ) {
     val contacts by viewModel.contacts.collectAsState()
 
-    val (favorites, otherContacts) = contacts.partition { it.isFavorite }
+    val (profiles, mainContacts) = contacts.partition { it.isProfile }
+
+    val (favorites, otherContacts) = mainContacts.partition { it.isFavorite }
 
     val groupedContacts: SortedMap<Char, List<Contact>> = otherContacts
         .groupBy { it.name.value.first().uppercaseChar() }
@@ -128,6 +130,16 @@ fun ContactList(
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (profiles.isNotEmpty()) {
+                item { ProfilesHeader() }
+                items(profiles, key = { it.id }) { contact ->
+                    ContactItem(
+                        contact = contact,
+                        isSelected = selectedID == contact.id,
+                        onClick = { onContactClick(contact) },
+                    )
+                }
+            }
             if (favorites.isNotEmpty()) {
                 item { FavoritesHeader() }
                 items(favorites, key = { it.id }) { contact ->
@@ -236,6 +248,25 @@ fun FavoritesHeader(modifier: Modifier = Modifier) {
 }
 
 @Composable
+fun ProfilesHeader(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(painterResource(R.drawable.person_24px), "Profiles",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = "User Profile",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
 fun LetterHeader(letter: Char, modifier: Modifier = Modifier) {
     Text(
         text = letter.toString(),
@@ -322,7 +353,7 @@ fun ContactItem(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = contact.name.value.first().uppercase(),
+                                text = contact.name.value.firstOrNull()?.uppercase()?: "",
                                 color = Color.White,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Bold

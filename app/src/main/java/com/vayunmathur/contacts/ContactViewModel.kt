@@ -24,6 +24,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
     fun loadContacts() {
         viewModelScope.launch {
             _contacts.value = Contact.getAllContacts(getApplication())
+            println(Contact.getProfile(getApplication()))
         }
     }
 

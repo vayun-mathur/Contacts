@@ -72,6 +72,7 @@ import java.io.ByteArrayOutputStream
 import kotlin.io.encoding.Base64
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
+import androidx.core.graphics.scale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,7 +93,7 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
             val inputStream = context.contentResolver.openInputStream(uri)
-            val bitmap = BitmapFactory.decodeStream(inputStream)
+            val bitmap = BitmapFactory.decodeStream(inputStream).scale(500, 500)
             val byteArrayOutputStream = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, 100, byteArrayOutputStream)
             val value = Base64.encode(byteArrayOutputStream.toByteArray())
@@ -116,20 +117,22 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
                 },
                 actions = {
                     Button(onClick = {
-                        val newContact = Contact(
-                            contact?.id ?: 0,
-                            contact?.lookupKey ?: "",
-                            contact?.isFavorite ?: false,
-                            ContactDetails(
-                                phoneNumbers,
-                                emails,
-                                addresses,
-                                dates,
-                                listOfNotNull(photo),
-                                listOf(Name(contact?.name?.id ?: 0, namePrefix, firstName, middleName, lastName, nameSuffix)),
-                                listOf(Organization(contact?.org?.id ?: 0, company)),
-                                listOf(Note(contact?.note?.id ?: 0, noteContent))
-                            )
+                        val details = ContactDetails(
+                            phoneNumbers,
+                            emails,
+                            addresses,
+                            dates,
+                            listOfNotNull(photo),
+                            listOf(Name(contact?.name?.id ?: 0, namePrefix, firstName, middleName, lastName, nameSuffix)),
+                            listOf(Organization(contact?.org?.id ?: 0, company)),
+                            listOf(Note(contact?.note?.id ?: 0, noteContent))
+                        )
+                        val newContact = contact?.copy(details = details) ?: Contact(
+                            false,
+                            0,
+                            "",
+                            false,
+                            details = details
                         )
                         viewModel.saveContact(newContact)
                         backStack.removeAt(backStack.lastIndex)

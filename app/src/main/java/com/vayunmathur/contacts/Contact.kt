@@ -6,6 +6,7 @@ import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.provider.ContactsContract
+import android.provider.ContactsContract.Profile
 import androidx.core.database.getStringOrNull
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -15,6 +16,7 @@ import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
+
 
 @Serializable
 data class ContactDetails(
@@ -170,6 +172,7 @@ data class Note(override val id: Long, val content: String): ContactDetail<Note>
 
 @Serializable
 data class Contact(
+    val isProfile: Boolean,
     val id: Long,
     val lookupKey: String,
     val isFavorite: Boolean,
@@ -187,6 +190,12 @@ data class Contact(
     val note: Note
         get() = details.notes.first()
 
+    val CONTACT_URI: Uri
+        get() = if(isProfile) Profile.CONTENT_URI else ContactsContract.Contacts.CONTENT_URI
+
+    val DATA_URI: Uri
+        get() = if(isProfile) Uri.withAppendedPath(ContactsContract.Profile.CONTENT_URI, ContactsContract.Contacts.Data.CONTENT_DIRECTORY) else ContactsContract.Data.CONTENT_URI
+
     fun save(context: Context, newDetails: ContactDetails, oldDetails: ContactDetails) {
         val ops = ArrayList<ContentProviderOperation>()
         if (id == 0L) {
@@ -198,42 +207,68 @@ data class Contact(
             ops += details.all().map { createInsertOperation(it) }
         } else {
             // Favorite
-            ops += ContentProviderOperation.newUpdate(ContactsContract.Contacts.CONTENT_URI)
+            ops += ContentProviderOperation.newUpdate(CONTACT_URI)
                 .withSelection("${ContactsContract.Contacts._ID} = ?", arrayOf(id.toString()))
                 .withValue(ContactsContract.Contacts.STARRED, if (isFavorite) 1 else 0)
                 .build()
 
             // details
-            ops += handleDetailUpdates(oldDetails.all(), newDetails.all(), getRawContactId(context))
+            ops += handleDetailUpdates(oldDetails.all(), newDetails.all(), getRawContactId(context)!!)
         }
         context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
     }
 
     private fun getRawContactId(context: Context): String? {
-        var rawContactId: String? = null
-        val cursor = context.contentResolver.query(
-            ContactsContract.RawContacts.CONTENT_URI,
-            arrayOf(ContactsContract.RawContacts._ID),
-            ContactsContract.RawContacts.CONTACT_ID + "=?",
-            arrayOf(id.toString()),
-            null
-        )
+        if(!isProfile) {
+            var rawContactId: String? = null
+            val cursor = context.contentResolver.query(
+                ContactsContract.RawContacts.CONTENT_URI,
+                arrayOf(ContactsContract.RawContacts._ID),
+                ContactsContract.RawContacts.CONTACT_ID + "=?",
+                arrayOf(id.toString()),
+                null
+            )
 
-        if (cursor != null) {
-            if (cursor.moveToFirst()) {
-                // We just take the first RawContact found.
-                // In complex cases (e.g., Google vs WhatsApp contacts), you might want to filter by account type.
-                val idIndex = cursor.getColumnIndex(ContactsContract.RawContacts._ID)
-                if (idIndex != -1) {
-                    rawContactId = cursor.getString(idIndex)
+            if (cursor != null) {
+                if (cursor.moveToFirst()) {
+                    // We just take the first RawContact found.
+                    // In complex cases (e.g., Google vs WhatsApp contacts), you might want to filter by account type.
+                    val idIndex = cursor.getColumnIndex(ContactsContract.RawContacts._ID)
+                    if (idIndex != -1) {
+                        rawContactId = cursor.getString(idIndex)
+                    }
                 }
+                cursor.close()
             }
-            cursor.close()
+            return rawContactId
+        } else {
+            var rawContactId: String? = null
+            val cursor = context.contentResolver.query(
+                Profile.CONTENT_RAW_CONTACTS_URI,
+                arrayOf(ContactsContract.RawContacts._ID),
+                ContactsContract.RawContacts.CONTACT_ID + "=?",
+                arrayOf(id.toString()),
+                null
+            )
+
+            if (cursor != null) {
+                if (cursor.moveToFirst()) {
+                    // We just take the first RawContact found.
+                    // In complex cases (e.g., Google vs WhatsApp contacts), you might want to filter by account type.
+                    val idIndex = cursor.getColumnIndex(ContactsContract.RawContacts._ID)
+                    if (idIndex != -1) {
+                        rawContactId = cursor.getString(idIndex)
+                    }
+                }
+                cursor.close()
+            }
+            println("RAW CONTACT ID")
+            println(rawContactId)
+            return rawContactId
         }
-        return rawContactId
     }
 
-    private fun handleDetailUpdates(currentDetails: List<ContactDetail<*>>, newDetails: List<ContactDetail<*>>, rawContactID: String?): List<ContentProviderOperation> {
+    private fun handleDetailUpdates(currentDetails: List<ContactDetail<*>>, newDetails: List<ContactDetail<*>>, rawContactID: String): List<ContentProviderOperation> {
         val currentIds = currentDetails.map { it.id }.toSet()
         val newIds = newDetails.map { it.id }.toSet()
         val ops = mutableListOf<ContentProviderOperation>()
@@ -256,57 +291,64 @@ data class Contact(
     }
 
     private fun createInsertOperation(detail: ContactDetail<*>, rawContactId: String? = null): ContentProviderOperation {
-        val builder = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+        val builder = ContentProviderOperation.newInsert(DATA_URI)
         if (rawContactId != null) {
             builder.withValue(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
         } else {
             builder.withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
         }
 
-        return builder.completeOperation(detail)
+        return builder.completeOperation(detail, true)
     }
 
     private fun createUpdateOperation(detail: ContactDetail<*>): ContentProviderOperation {
-        return ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
+        return ContentProviderOperation.newUpdate(DATA_URI)
             .withSelection("${ContactsContract.Data._ID} = ?", arrayOf(detail.id.toString()))
-            .completeOperation(detail)
+            .completeOperation(detail, false)
     }
 
     private fun createDeleteOperation(dataId: Long): ContentProviderOperation {
-        return ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
+        return ContentProviderOperation.newDelete(DATA_URI)
             .withSelection("${ContactsContract.Data._ID} = ?", arrayOf(dataId.toString()))
             .build()
     }
 
-    fun ContentProviderOperation.Builder.completeOperation(detail: ContactDetail<*>): ContentProviderOperation {
+    fun ContentProviderOperation.Builder.completeOperation(detail: ContactDetail<*>, isInsert: Boolean): ContentProviderOperation {
+        if (isInsert) {
+            this.withValue(ContactsContract.Data.MIMETYPE, when(detail) {
+                is PhoneNumber -> CDKPhone.CONTENT_ITEM_TYPE
+                is Email -> CDKEmail.CONTENT_ITEM_TYPE
+                is Address -> CDKStructuredPostal.CONTENT_ITEM_TYPE
+                is Event -> CDKEvent.CONTENT_ITEM_TYPE
+                is Photo -> CDKPhoto.CONTENT_ITEM_TYPE
+                is Name -> CDKSName.CONTENT_ITEM_TYPE
+                is Organization -> CDKOrg.CONTENT_ITEM_TYPE
+                is Note -> CDKNote.CONTENT_ITEM_TYPE
+                else -> throw IllegalArgumentException("Unknown detail type")
+            })
+        }
         return when (detail) {
             is PhoneNumber -> this
-                .withValue(ContactsContract.Data.MIMETYPE, CDKPhone.CONTENT_ITEM_TYPE)
                 .withValue(CDKPhone.NUMBER, detail.number)
                 .withValue(CDKPhone.TYPE, detail.type)
                 .build()
             is Email -> this
-                .withValue(ContactsContract.Data.MIMETYPE, CDKEmail.CONTENT_ITEM_TYPE)
                 .withValue(CDKEmail.ADDRESS, detail.address)
                 .withValue(CDKEmail.TYPE, detail.type)
                 .build()
             is Address -> this
-                .withValue(ContactsContract.Data.MIMETYPE, CDKStructuredPostal.CONTENT_ITEM_TYPE)
                 .withValue(CDKStructuredPostal.FORMATTED_ADDRESS, detail.formattedAddress)
                 .withValue(CDKStructuredPostal.TYPE, detail.type)
                 .build()
             is Event -> this
-                .withValue(ContactsContract.Data.MIMETYPE, CDKEvent.CONTENT_ITEM_TYPE)
                 .withValue(CDKEvent.START_DATE, detail.startDate.format(LocalDate.Formats.ISO))
                 .withValue(CDKEvent.TYPE, detail.type)
                 .build()
             is Photo -> this
-                .withValue(ContactsContract.Data.MIMETYPE, CDKPhoto.CONTENT_ITEM_TYPE)
                 .withValue(ContactsContract.Data.IS_SUPER_PRIMARY, 1)
                 .withValue(CDKPhoto.PHOTO, Base64.decode(detail.photo))
                 .build()
             is Name -> this
-                .withValue(ContactsContract.Data.MIMETYPE, CDKSName.CONTENT_ITEM_TYPE)
                 .withValue(CDKSName.PREFIX, detail.namePrefix)
                 .withValue(CDKSName.GIVEN_NAME, detail.firstName)
                 .withValue(CDKSName.MIDDLE_NAME, detail.middleName)
@@ -314,12 +356,10 @@ data class Contact(
                 .withValue(CDKSName.SUFFIX, detail.nameSuffix)
                 .build()
             is Organization -> this
-                .withValue(ContactsContract.Data.MIMETYPE, CDKOrg.CONTENT_ITEM_TYPE)
                 .withValue(CDKOrg.COMPANY, detail.company)
                 .build()
 
             is Note -> this
-                .withValue(ContactsContract.Data.MIMETYPE, CDKNote.CONTENT_ITEM_TYPE)
                 .withValue(CDKNote.NOTE, detail.content)
                 .build()
 
@@ -349,7 +389,7 @@ data class Contact(
                     val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY))
                     val isFavorite = it.getInt(it.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)) == 1
 
-                    var details = getDetails(context, id)
+                    var details = getDetails(context, id, false)
                     if((details.names.isEmpty() || (details.names.first().firstName.isEmpty() && details.names.first().lastName.isEmpty())) && displayName != null) {
                         val firstName = displayName.split(" ").first()
                         val lastName = displayName.split(" ").last()
@@ -363,28 +403,79 @@ data class Contact(
                     if(details.notes.isEmpty())
                         details = details.copy(notes = listOf(Note(0, "")))
 
-                    contacts += Contact(id, lookupKey, isFavorite, details)
+                    contacts += Contact(false, id, lookupKey, isFavorite, details)
                 }
             }
             return contacts
         }
 
-        fun setFavorite(context: Context, contactId: Long, isFavorite: Boolean) {
-            context.contentResolver.update(
-                ContactsContract.Contacts.CONTENT_URI,
-                ContentValues().apply {
-                    put(ContactsContract.Contacts.STARRED, if (isFavorite) 1 else 0)
-                },
-                "${ContactsContract.Contacts._ID} = ?",
-                arrayOf(contactId.toString())
+        private fun tryGetProfile(context: Context): Contact? {
+            val contentResolver = context.contentResolver
+            val uri = Profile.CONTENT_URI
+            val projection = arrayOf(
+                Profile._ID,
+                Profile.LOOKUP_KEY,
+                Profile.DISPLAY_NAME_PRIMARY,
+                Profile.STARRED,
             )
+            val cursor = contentResolver.query(uri, projection, null, null, null)
+
+            cursor?.use {
+                while (it.moveToNext()) {
+                    val id = it.getLong(it.getColumnIndexOrThrow(ContactsContract.Contacts._ID))
+                    val lookupKey = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.LOOKUP_KEY))
+                    val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY))
+                    val isFavorite = it.getInt(it.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)) == 1
+                    println(id)
+                    println(displayName)
+                    println("PROFILE")
+
+                    var details = getDetails(context, id, true)
+
+                    println(details)
+
+                    if(details.names.isEmpty())
+                        details = details.copy(names = listOf(Name(0, "", "", "", "", "")))
+
+                    if((details.names.first().firstName.isEmpty() && details.names.first().lastName.isEmpty()) && displayName != null) {
+                        val firstName = displayName.split(" ").first()
+                        val lastName = displayName.split(" ").last()
+                        if(firstName.isEmpty() && lastName.isEmpty()) continue
+                        details = details.copy(names = listOf(Name(details.names.first().id, "", firstName, "", lastName, "")))
+                    }
+
+                    if(details.orgs.isEmpty())
+                        details = details.copy(orgs = listOf(Organization(0, "")))
+
+                    if(details.notes.isEmpty())
+                        details = details.copy(notes = listOf(Note(0, "")))
+
+                    return Contact(true, id, lookupKey, isFavorite, details)
+                }
+            }
+            return null
         }
 
-        fun getContact(context: Context, contactId: Long): Contact? =
-            getContacts(context, contactId).firstOrNull()
+        fun getProfile(context: Context): Contact {
+            val profile = tryGetProfile(context)
+            if(profile != null) return profile
+
+            val values = ContentValues()
+            context.contentResolver.insert(Profile.CONTENT_RAW_CONTACTS_URI, values)
+
+            return tryGetProfile(context)!!
+        }
+
+        fun getContact(context: Context, contactId: Long): Contact? {
+            return if(ContactsContract.isProfileId(contactId)) {
+                getProfile(context)
+            } else {
+                getContacts(context, contactId).firstOrNull()
+            }
+        }
 
         fun getAllContacts(context: Context): List<Contact> =
-            getContacts(context, null)
+            getContacts(context, null) + getProfile(context)
 
         fun delete(context: Context, contact: Contact) {
             context.contentResolver.delete(
@@ -395,14 +486,14 @@ data class Contact(
     }
 }
 
-fun getDetails(context: Context, id: Long): ContactDetails {
+fun getDetails(context: Context, id: Long, isProfile: Boolean = false): ContactDetails {
     val contentResolver = context.contentResolver
     val contactId = id.toString()
 
     fun <T: ContactDetail<T>> queryData(projection: List<String>, mimeType: String, datumFromCursor: (Cursor) -> T?): List<T> {
         val data = mutableListOf<T>()
         contentResolver.query(
-            ContactsContract.Data.CONTENT_URI,
+            if(isProfile) Uri.withAppendedPath(ContactsContract.Profile.CONTENT_URI, ContactsContract.Contacts.Data.CONTENT_DIRECTORY) else ContactsContract.Data.CONTENT_URI,
             projection.toTypedArray(),
             "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
             arrayOf(contactId, mimeType),
