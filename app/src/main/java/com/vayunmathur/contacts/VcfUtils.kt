@@ -8,7 +8,7 @@ import java.io.InputStream
 import java.io.OutputStream
 
 object VcfUtils {
-    suspend fun exportContacts(context: Context, contacts: List<Contact>, outputStream: OutputStream) {
+    suspend fun exportContacts(contacts: List<Contact>, outputStream: OutputStream) {
         withContext(Dispatchers.IO) {
             outputStream.bufferedWriter().use { writer ->
                 for (contact in contacts) {
@@ -78,7 +78,8 @@ object VcfUtils {
                                 dates = emptyList(),
                                 photos = emptyList(),
                                 names = listOf(Name(0, builder.namePrefix, builder.firstName, builder.middleName, builder.lastName, builder.nameSuffix)),
-                                orgs = listOf(Organization(0, builder.companyName))
+                                orgs = listOf(Organization(0, builder.companyName)),
+                                notes = emptyList()
                             )
                         )
                         contactsToSave.add(newContact)

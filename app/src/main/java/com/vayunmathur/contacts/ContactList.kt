@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.ContactsContract
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -22,7 +21,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -46,7 +44,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,7 +56,6 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.selects.select
 import java.util.SortedMap
 import kotlin.io.encoding.Base64
 
@@ -90,7 +86,7 @@ fun ContactList(
                 coroutineScope.launch {
                     try {
                         context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                            VcfUtils.exportContacts(context, contacts, outputStream)
+                            VcfUtils.exportContacts(contacts, outputStream)
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -129,7 +125,7 @@ fun ContactList(
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(paddingValues),
-            contentPadding = PaddingValues(horizontal = 8.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (favorites.isNotEmpty()) {
@@ -200,15 +196,15 @@ fun ContactItemPick(contact: Contact, mimeType: String?, onClick: (Uri) -> Unit)
     } else {
         val details = contact.details
         val relevantList = when(mimeType) {
-            ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE -> details.emails
-            ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE -> details.phoneNumbers
-            ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE -> details.addresses
+            CDKEmail.CONTENT_ITEM_TYPE -> details.emails
+            CDKPhone.CONTENT_ITEM_TYPE -> details.phoneNumbers
+            CDKStructuredPostal.CONTENT_ITEM_TYPE -> details.addresses
             else -> throw IllegalArgumentException("Unsupported MIME type: $mimeType")
         }
         val baseURI = when(mimeType) {
-            ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE -> ContactsContract.CommonDataKinds.Email.CONTENT_URI
-            ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE -> ContactsContract.CommonDataKinds.Phone.CONTENT_URI
-            ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE -> ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_URI
+            CDKEmail.CONTENT_ITEM_TYPE -> CDKEmail.CONTENT_URI
+            CDKPhone.CONTENT_ITEM_TYPE -> CDKPhone.CONTENT_URI
+            CDKStructuredPostal.CONTENT_ITEM_TYPE -> CDKStructuredPostal.CONTENT_URI
             else -> throw IllegalArgumentException("Unsupported MIME type: $mimeType")
         }
         ContactItem(contact, false, {  }, dropdownList = relevantList.map { it.value }, dropdownListClick = { index ->

@@ -4,7 +4,6 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.view.Window
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,7 +37,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -129,7 +127,7 @@ fun ContactDetailsPage(
                         scope.launch(Dispatchers.IO) {
                             val vcfFile = File(context.cacheDir, "${contact!!.name.value.replace(' ', '_')}.vcf")
                             vcfFile.outputStream().use { outputStream ->
-                                VcfUtils.exportContacts(context, listOf(contact!!), outputStream)
+                                VcfUtils.exportContacts(listOf(contact!!), outputStream)
                             }
                             val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", vcfFile)
                             val intent = Intent(Intent.ACTION_SEND)
@@ -174,7 +172,7 @@ fun ContactDetailsPage(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues),
-            contentPadding = PaddingValues(horizontal = 8.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -245,6 +243,18 @@ fun ContactDetailsPage(
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                             )
                         }
+                    }
+                }
+            }
+            
+            if (contact!!.note.content.isNotEmpty()) {
+                item {
+                    GroupedSection(title = "Note") {
+                        Text(
+                            text = contact!!.note.content,
+                            modifier = Modifier.padding(16.dp),
+                            style = MaterialTheme.typography.bodyLarge
+                        )
                     }
                 }
             }

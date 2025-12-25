@@ -24,15 +24,16 @@ data class ContactDetails(
     val dates: List<Event>,
     val photos: List<Photo>,
     val names: List<Name>,
-    val orgs: List<Organization>
+    val orgs: List<Organization>,
+    val notes: List<Note>
 ) {
     fun all(): List<ContactDetail<*>> {
-        return phoneNumbers + emails + addresses + dates + photos + names + orgs
+        return phoneNumbers + emails + addresses + dates + photos + names + orgs + notes
     }
 
     companion object {
         fun empty(): ContactDetails {
-            return ContactDetails(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+            return ContactDetails(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
         }
     }
 }
@@ -44,6 +45,7 @@ typealias CDKEvent = ContactsContract.CommonDataKinds.Event
 typealias CDKPhoto = ContactsContract.CommonDataKinds.Photo
 typealias CDKSName = ContactsContract.CommonDataKinds.StructuredName
 typealias CDKOrg = ContactsContract.CommonDataKinds.Organization
+typealias CDKNote = ContactsContract.CommonDataKinds.Note
 
 interface ContactDetail<T: ContactDetail<T>> {
     val id: Long
@@ -155,6 +157,18 @@ data class Name(
 }
 
 @Serializable
+data class Note(override val id: Long, val content: String): ContactDetail<Note> {
+    override val type: Int = 0
+    override val value: String
+        get() = content
+
+    override fun withType(type: Int) = throw UnsupportedOperationException("Cannot change type of note")
+    override fun withValue(value: String) = Note(id, value)
+
+    override fun typeString(context: Context) = throw UnsupportedOperationException("Note doesn't have type")
+}
+
+@Serializable
 data class Contact(
     val id: Long,
     val lookupKey: String,
@@ -169,6 +183,9 @@ data class Contact(
 
     val org: Organization
         get() = details.orgs.first()
+
+    val note: Note
+        get() = details.notes.first()
 
     fun save(context: Context, newDetails: ContactDetails, oldDetails: ContactDetails) {
         val ops = ArrayList<ContentProviderOperation>()
@@ -301,6 +318,11 @@ data class Contact(
                 .withValue(CDKOrg.COMPANY, detail.company)
                 .build()
 
+            is Note -> this
+                .withValue(ContactsContract.Data.MIMETYPE, CDKNote.CONTENT_ITEM_TYPE)
+                .withValue(CDKNote.NOTE, detail.content)
+                .build()
+
             else -> throw IllegalArgumentException("Unknown detail type")
         }
     }
@@ -336,7 +358,10 @@ data class Contact(
                     }
 
                     if(details.orgs.isEmpty())
-                        details = details.copy(orgs = listOf(Organization(details.orgs.firstOrNull()?.id?:0, "")))
+                        details = details.copy(orgs = listOf(Organization(0, "")))
+
+                    if(details.notes.isEmpty())
+                        details = details.copy(notes = listOf(Note(0, "")))
 
                     contacts += Contact(id, lookupKey, isFavorite, details)
                 }
@@ -389,7 +414,7 @@ fun getDetails(context: Context, id: Long): ContactDetails {
                 }
             }
         }
-        return data;
+        return data
     }
 
     val phoneNumbers = queryData(listOf(CDKPhone._ID, CDKPhone.NUMBER, CDKPhone.TYPE), CDKPhone.CONTENT_ITEM_TYPE) {
@@ -459,5 +484,11 @@ fun getDetails(context: Context, id: Long): ContactDetails {
         Organization(id, company)
     }
 
-    return ContactDetails(phoneNumbers.distinct(), emails.distinct(), addresses.distinct(), dates.distinct(), photos.distinct(), names.distinct(), orgs.distinct())
+    val note = queryData(listOf(CDKNote._ID, CDKNote.NOTE), CDKNote.CONTENT_ITEM_TYPE) {
+        val id = it.getLong(it.getColumnIndexOrThrow(CDKNote._ID))
+        val note = it.getString(it.getColumnIndexOrThrow(CDKNote.NOTE))
+        Note(id, note)
+    }
+
+    return ContactDetails(phoneNumbers.distinct(), emails.distinct(), addresses.distinct(), dates.distinct(), photos.distinct(), names.distinct(), orgs.distinct(), note.distinct())
 }

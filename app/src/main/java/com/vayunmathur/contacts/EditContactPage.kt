@@ -76,7 +76,7 @@ import kotlin.time.Instant
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel, contactId: Long?) {
-    val contact = contactId?.let { viewModel.getContact(it) }
+    val contact = remember { contactId?.let { viewModel.getContact(it) } }
     val details = contact?.details
     val context = LocalContext.current
 
@@ -86,6 +86,7 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
     var lastName by remember { mutableStateOf(contact?.name?.lastName ?: "") }
     var nameSuffix by remember { mutableStateOf(contact?.name?.nameSuffix ?: "") }
     var company by remember { mutableStateOf(contact?.org?.company ?: "") }
+    var noteContent by remember { mutableStateOf(contact?.note?.content ?: "") }
     var photo by remember { mutableStateOf(contact?.photo) }
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -98,20 +99,10 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
             photo = photo?.withValue(value) ?: Photo(0, value)
         }
     }
-
-    val phoneNumbers = remember { mutableStateListOf<PhoneNumber>() }
-    val emails = remember { mutableStateListOf<Email>() }
-    val dates = remember { mutableStateListOf<Event>() }
-    val addresses = remember { mutableStateListOf<Address>() }
-
-    LaunchedEffect(Unit) {
-        details?.let { details ->
-            phoneNumbers.addAll(details.phoneNumbers)
-            emails.addAll(details.emails)
-            dates.addAll(details.dates)
-            addresses.addAll(details.addresses)
-        }
-    }
+    val phoneNumbers = remember { mutableStateListOf(*details?.phoneNumbers?.toTypedArray()?:emptyArray()) }
+    val emails = remember { mutableStateListOf(*details?.emails?.toTypedArray()?:emptyArray()) }
+    val dates = remember { mutableStateListOf(*details?.dates?.toTypedArray()?:emptyArray()) }
+    val addresses = remember { mutableStateListOf(*details?.addresses?.toTypedArray()?:emptyArray()) }
 
     Scaffold(
         contentWindowInsets = WindowInsets(),
@@ -136,7 +127,8 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
                                 dates,
                                 listOfNotNull(photo),
                                 listOf(Name(contact?.name?.id ?: 0, namePrefix, firstName, middleName, lastName, nameSuffix)),
-                                listOf(Organization(contact?.org?.id ?: 0, company))
+                                listOf(Organization(contact?.org?.id ?: 0, company)),
+                                listOf(Note(contact?.note?.id ?: 0, noteContent))
                             )
                         )
                         viewModel.saveContact(newContact)
@@ -153,7 +145,7 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.height(24.dp))
@@ -234,6 +226,22 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
                 KeyboardType.Text,
                 VisualTransformation.None,
                 listOf(CDKStructuredPostal.TYPE_HOME, CDKStructuredPostal.TYPE_WORK, CDKStructuredPostal.TYPE_OTHER)
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = noteContent,
+                onValueChange = { noteContent = it },
+                label = { Text("Note") },
+                leadingIcon = {
+                    Icon(
+                        painterResource(R.drawable.outline_edit_24),
+                        contentDescription = "Note"
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3
             )
 
             Spacer(Modifier.height(16.dp))

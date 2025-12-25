@@ -143,7 +143,7 @@ class MainActivity : ComponentActivity() {
                     else if (intent.action == Intent.ACTION_PICK || intent.action == Intent.ACTION_GET_CONTENT) {
                         var type = intent.type
                         if (intent.data.toString().contains("phones")) {
-                            type = ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE
+                            type = CDKPhone.CONTENT_ITEM_TYPE
                         }
                         val contacts by viewModel.contacts.collectAsState()
                         ContactListPick(type, contacts) {
