@@ -168,7 +168,9 @@ fun ContactList(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactListPick(mimeType: String?, contacts: List<Contact>, onClick: (Uri) -> Unit) {
-    val (favorites, otherContacts) = contacts.partition { it.isFavorite }
+    val (profiles, mainContacts) = contacts.partition { it.isProfile }
+
+    val (favorites, otherContacts) = mainContacts.partition { it.isFavorite }
 
     val groupedContacts: SortedMap<Char, List<Contact>> = otherContacts
         .groupBy { it.name.value.first().uppercaseChar() }
@@ -180,6 +182,13 @@ fun ContactListPick(mimeType: String?, contacts: List<Contact>, onClick: (Uri) -
             contentPadding = PaddingValues(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (profiles.isNotEmpty()) {
+                item { ProfilesHeader() }
+                items(profiles, key = { it.id }) { contact ->
+                    ContactItemPick(contact, mimeType, onClick)
+                }
+            }
+
             if (favorites.isNotEmpty()) {
                 item { FavoritesHeader() }
                 items(favorites, key = { it.id }) { contact ->
