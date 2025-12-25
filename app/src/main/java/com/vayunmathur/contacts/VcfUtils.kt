@@ -18,8 +18,8 @@ object VcfUtils {
                     // N:LastName;FirstName;MiddleName;Prefix;Suffix
                     writer.write("N:${contact.name.lastName};${contact.name.firstName};${contact.name.middleName};${contact.name.namePrefix};${contact.name.nameSuffix}\n")
                     writer.write("FN:${contact.name}\n")
-                    if (contact.companyName.isNotEmpty()) {
-                        writer.write("ORG:${contact.companyName}\n")
+                    if (contact.org.company.isNotEmpty()) {
+                        writer.write("ORG:${contact.org.company}\n")
                     }
                     
                     for (phone in details.phoneNumbers) {
@@ -70,7 +70,6 @@ object VcfUtils {
                         val newContact = Contact(
                             id = 0,
                             lookupKey = "",
-                            companyName = builder.companyName,
                             isFavorite = false,
                             ContactDetails(
                                 phoneNumbers = builder.phoneNumbers,
@@ -78,7 +77,8 @@ object VcfUtils {
                                 addresses = builder.addresses,
                                 dates = emptyList(),
                                 photos = emptyList(),
-                                names = listOf(Name(0, builder.namePrefix, builder.firstName, builder.middleName, builder.lastName, builder.nameSuffix))
+                                names = listOf(Name(0, builder.namePrefix, builder.firstName, builder.middleName, builder.lastName, builder.nameSuffix)),
+                                orgs = listOf(Organization(0, builder.companyName))
                             )
                         )
                         contactsToSave.add(newContact)
@@ -136,7 +136,7 @@ object VcfUtils {
             }
 
             for (contact in contactsToSave) {
-                contact.save(context, contact.details, ContactDetails(listOf(), listOf(), listOf(), listOf(), listOf(), listOf()))
+                contact.save(context, contact.details, ContactDetails.empty())
             }
          }
     }

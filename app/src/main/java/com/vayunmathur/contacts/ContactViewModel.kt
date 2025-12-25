@@ -62,7 +62,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch(Dispatchers.IO) {
             val contactId = contact.id
             val details = contact.details
-            val oldDetails = contacts.value.find { it.id == contactId }?.details ?: ContactDetails(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+            val oldDetails = contacts.value.find { it.id == contactId }?.details ?: ContactDetails.empty()
             contact.save(getApplication(), details, oldDetails)
 
             if (contactId == 0L) {

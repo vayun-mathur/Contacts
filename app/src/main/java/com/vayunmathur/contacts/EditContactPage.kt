@@ -85,7 +85,7 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
     var middleName by remember { mutableStateOf(contact?.name?.middleName ?: "") }
     var lastName by remember { mutableStateOf(contact?.name?.lastName ?: "") }
     var nameSuffix by remember { mutableStateOf(contact?.name?.nameSuffix ?: "") }
-    var company by remember { mutableStateOf(contact?.companyName ?: "") }
+    var company by remember { mutableStateOf(contact?.org?.company ?: "") }
     var photo by remember { mutableStateOf(contact?.photo) }
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -128,7 +128,6 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
                         val newContact = Contact(
                             contact?.id ?: 0,
                             contact?.lookupKey ?: "",
-                            company,
                             contact?.isFavorite ?: false,
                             ContactDetails(
                                 phoneNumbers,
@@ -136,7 +135,8 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
                                 addresses,
                                 dates,
                                 listOfNotNull(photo),
-                                listOf(Name(contact?.name?.id ?: 0, namePrefix, firstName, middleName, lastName, nameSuffix))
+                                listOf(Name(contact?.name?.id ?: 0, namePrefix, firstName, middleName, lastName, nameSuffix)),
+                                listOf(Organization(contact?.org?.id ?: 0, company))
                             )
                         )
                         viewModel.saveContact(newContact)

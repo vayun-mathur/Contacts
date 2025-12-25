@@ -298,7 +298,7 @@ fun ProfileHeader(contact: Contact) {
             fontWeight = FontWeight.SemiBold
         )
         Text(
-            text = contact.companyName,
+            text = contact.org.company,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.SemiBold
         )
