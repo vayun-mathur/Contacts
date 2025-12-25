@@ -12,11 +12,11 @@ object VcfUtils {
         withContext(Dispatchers.IO) {
             outputStream.bufferedWriter().use { writer ->
                 for (contact in contacts) {
-                    val details = contact.getDetails(context)
+                    val details = contact.details
                     writer.write("BEGIN:VCARD\n")
                     writer.write("VERSION:3.0\n")
                     // N:LastName;FirstName;MiddleName;Prefix;Suffix
-                    writer.write("N:${contact.lastName};${contact.firstName};${contact.middleName};${contact.namePrefix};${contact.nameSuffix}\n")
+                    writer.write("N:${contact.name.lastName};${contact.name.firstName};${contact.name.middleName};${contact.name.namePrefix};${contact.name.nameSuffix}\n")
                     writer.write("FN:${contact.name}\n")
                     if (contact.companyName.isNotEmpty()) {
                         writer.write("ORG:${contact.companyName}\n")
@@ -57,7 +57,7 @@ object VcfUtils {
 
     suspend fun importContacts(context: Context, inputStream: InputStream) {
          withContext(Dispatchers.IO) {
-            val contactsToSave = mutableListOf<Pair<Contact, ContactDetails>>()
+            val contactsToSave = mutableListOf<Contact>()
             val reader = inputStream.bufferedReader()
             var currentContact: ContactBuilder? = null
             
@@ -70,22 +70,18 @@ object VcfUtils {
                         val newContact = Contact(
                             id = 0,
                             lookupKey = "",
-                            namePrefix = builder.namePrefix,
-                            firstName = builder.firstName,
-                            middleName = builder.middleName,
-                            lastName = builder.lastName,
-                            nameSuffix = builder.nameSuffix,
                             companyName = builder.companyName,
-                            photo = null,
-                            isFavorite = false
+                            isFavorite = false,
+                            ContactDetails(
+                                phoneNumbers = builder.phoneNumbers,
+                                emails = builder.emails,
+                                addresses = builder.addresses,
+                                dates = emptyList(),
+                                photos = emptyList(),
+                                names = listOf(Name(0, builder.namePrefix, builder.firstName, builder.middleName, builder.lastName, builder.nameSuffix))
+                            )
                         )
-                        val newDetails = ContactDetails(
-                            phoneNumbers = builder.phoneNumbers,
-                            emails = builder.emails,
-                            addresses = builder.addresses,
-                            dates = emptyList()
-                        )
-                        contactsToSave.add(newContact to newDetails)
+                        contactsToSave.add(newContact)
                     }
                     currentContact = null
                 } else if (currentContact != null) {
@@ -138,9 +134,9 @@ object VcfUtils {
                     }
                 }
             }
-            
-            for ((contact, details) in contactsToSave) {
-                contact.save(context, details, ContactDetails(listOf(), listOf(), listOf(), listOf()))
+
+            for (contact in contactsToSave) {
+                contact.save(context, contact.details, ContactDetails(listOf(), listOf(), listOf(), listOf(), listOf(), listOf()))
             }
          }
     }

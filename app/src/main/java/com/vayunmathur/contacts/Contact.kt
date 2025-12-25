@@ -3,21 +3,18 @@ package com.vayunmathur.contacts
 import android.content.ContentProviderOperation
 import android.content.ContentValues
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.database.Cursor
 import android.net.Uri
-import androidx.core.net.toUri
+import android.provider.ContactsContract
+import androidx.core.database.getStringOrNull
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.format
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.Serializable
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
-import android.provider.ContactsContract
 
 
 @Serializable
@@ -26,10 +23,11 @@ data class ContactDetails(
     val emails: List<Email>,
     val addresses: List<Address>,
     val dates: List<Event>,
-    val photos: List<Photo>
+    val photos: List<Photo>,
+    val names: List<Name>
 ) {
     fun all(): List<ContactDetail<*>> {
-        return phoneNumbers + emails + addresses + dates + photos
+        return phoneNumbers + emails + addresses + dates + photos + names
     }
 }
 
@@ -38,6 +36,7 @@ typealias CDKPhone = ContactsContract.CommonDataKinds.Phone
 typealias CDKStructuredPostal = ContactsContract.CommonDataKinds.StructuredPostal
 typealias CDKEvent = ContactsContract.CommonDataKinds.Event
 typealias CDKPhoto = ContactsContract.CommonDataKinds.Photo
+typealias CDKSName = ContactsContract.CommonDataKinds.StructuredName
 
 interface ContactDetail<T: ContactDetail<T>> {
     val id: Long
@@ -95,14 +94,15 @@ data class Address(override val id: Long, val formattedAddress: String, override
 }
 
 @Serializable
-data class Photo(override val id: Long, val photo: String, override val type: Int): ContactDetail<Address> {
+data class Photo(override val id: Long, val photo: String): ContactDetail<Photo> {
+    override val type: Int = 0
     override val value: String
         get() = photo
 
-    override fun withType(type: Int) = Photo(id, photo, type)
-    override fun withValue(value: String) = Photo(id, value, type)
+    override fun withType(type: Int) = throw UnsupportedOperationException("Cannot change type of photo")
+    override fun withValue(value: String) = Photo(id, value)
 
-    override fun typeString(context: Context) = ""
+    override fun typeString(context: Context) = throw UnsupportedOperationException("Photo doesn't have type")
 }
 
 @Serializable
@@ -117,20 +117,34 @@ data class Event(override val id: Long, val startDate: LocalDate, override val t
 }
 
 @Serializable
-data class Contact(
-    val id: Long,
-    val lookupKey: String,
+data class Name(
+    override val id: Long,
     val namePrefix: String,
     val firstName: String,
     val middleName: String,
     val lastName: String,
-    val nameSuffix: String,
+    val nameSuffix: String
+): ContactDetail<Name> {
+    override val type: Int = 0
+    override val value: String
+        get() = listOfNotNull(namePrefix.ifEmpty { null }, firstName.ifEmpty { null }, middleName.ifEmpty { null }, lastName.ifEmpty { null }, nameSuffix.ifEmpty { null }).joinToString(" ")
+
+    override fun withType(type: Int) = throw UnsupportedOperationException("Cannot change type of name")
+    override fun withValue(value: String) = throw UnsupportedOperationException("Cannot change value of name")
+
+    override fun typeString(context: Context) = throw UnsupportedOperationException("Name doesn't have type")
+}
+
+@Serializable
+data class Contact(
+    val id: Long,
+    val lookupKey: String,
     val companyName: String,
     val isFavorite: Boolean,
     val details: ContactDetails
 ) {
-    val name: String
-        get() = listOfNotNull(namePrefix.ifEmpty { null }, firstName, middleName.ifEmpty { null }, lastName, nameSuffix.ifEmpty { null }).joinToString(" ")
+    val name: Name
+        get() = details.names.first()
 
     val photo: Photo?
         get() = details.photos.firstOrNull()
@@ -191,16 +205,6 @@ data class Contact(
             .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
             .build())
 
-        // Name
-        ops.add(insertOrUpdate()
-            .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-            .withValue(ContactsContract.CommonDataKinds.StructuredName.PREFIX, namePrefix.ifEmpty { null })
-            .withValue(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, firstName.ifEmpty { null })
-            .withValue(ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME, middleName.ifEmpty { null })
-            .withValue(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, lastName.ifEmpty { null })
-            .withValue(ContactsContract.CommonDataKinds.StructuredName.SUFFIX, nameSuffix.ifEmpty { null })
-            .build())
-
         // Company
         ops.add(insertOrUpdate()
             .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Organization.CONTENT_ITEM_TYPE)
@@ -216,16 +220,6 @@ data class Contact(
 
     private fun update(context: Context, newDetails: ContactDetails, oldDetails: ContactDetails) {
         val ops = ArrayList<ContentProviderOperation>()
-
-        // Name
-        ops.add(insertOrUpdate()
-                .withValue(ContactsContract.CommonDataKinds.StructuredName.PREFIX, namePrefix.ifEmpty { null })
-                .withValue(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, firstName.ifEmpty { null })
-                .withValue(ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME, middleName.ifEmpty { null })
-                .withValue(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, lastName.ifEmpty { null })
-                .withValue(ContactsContract.CommonDataKinds.StructuredName.SUFFIX, nameSuffix.ifEmpty { null })
-                .build()
-        )
 
         // Company
         ops.add(insertOrUpdate()
@@ -317,6 +311,14 @@ data class Contact(
                 .withValue(ContactsContract.Data.IS_SUPER_PRIMARY, 1)
                 .withValue(CDKPhoto.PHOTO, Base64.decode(detail.photo))
                 .build()
+            is Name -> this
+                .withValue(ContactsContract.Data.MIMETYPE, CDKSName.CONTENT_ITEM_TYPE)
+                .withValue(CDKSName.PREFIX, detail.namePrefix)
+                .withValue(CDKSName.GIVEN_NAME, detail.firstName)
+                .withValue(CDKSName.MIDDLE_NAME, detail.middleName)
+                .withValue(CDKSName.FAMILY_NAME, detail.lastName)
+                .withValue(CDKSName.SUFFIX, detail.nameSuffix)
+                .build()
 
             else -> throw IllegalArgumentException("Unknown detail type")
         }
@@ -333,52 +335,17 @@ data class Contact(
                 ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,
                 ContactsContract.Contacts.STARRED,
             )
-            val cursor = contentResolver.query(uri, projection, if(contactId == null) null else "${ContactsContract.Contacts._ID} = ?", arrayOf(contactId.toString()), null)
+            val cursor = contentResolver.query(uri, projection, if(contactId == null) null else "${ContactsContract.Contacts._ID} = ?", listOfNotNull(contactId?.toString()).toTypedArray(), null)
 
             val contacts = mutableListOf<Contact>()
 
             cursor?.use {
-                if (it.moveToFirst()) {
+                while (it.moveToNext()) {
                     val id = it.getLong(it.getColumnIndexOrThrow(ContactsContract.Contacts._ID))
                     val lookupKey = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.LOOKUP_KEY))
                     val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY))
                     val isFavorite = it.getInt(it.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)) == 1
-                    var namePrefix = ""
-                    var firstName = ""
-                    var middleName = ""
-                    var lastName = ""
-                    var nameSuffix = ""
                     var companyName = ""
-
-                    val nameCursor = contentResolver.query(
-                        ContactsContract.Data.CONTENT_URI,
-                        arrayOf(
-                            ContactsContract.CommonDataKinds.StructuredName.PREFIX,
-                            ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME,
-                            ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME,
-                            ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME,
-                            ContactsContract.CommonDataKinds.StructuredName.SUFFIX
-                        ),
-                        "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
-                        arrayOf(contactId.toString(), ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE),
-                        null
-                    )
-
-                    nameCursor?.use { nc ->
-                        if (nc.moveToFirst()) {
-                            namePrefix = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.PREFIX)) ?: ""
-                            firstName = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME)) ?: ""
-                            middleName = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME)) ?: ""
-                            lastName = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME)) ?: ""
-                            nameSuffix = nc.getString(nc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredName.SUFFIX)) ?: ""
-                        }
-                    }
-
-                    if ((firstName.isEmpty() && lastName.isEmpty()) && displayName != null) {
-                        val parts = displayName.split(" ", limit = 2)
-                        firstName = parts.getOrNull(0) ?: ""
-                        lastName = parts.getOrNull(1) ?: ""
-                    }
 
                     val organizationCursor = contentResolver.query(
                         ContactsContract.Data.CONTENT_URI,
@@ -393,17 +360,22 @@ data class Contact(
                         }
                     }
 
+                    var details = getDetails(context, id)
+                    if((details.names.isEmpty() || (details.names.first().firstName.isEmpty() && details.names.first().lastName.isEmpty())) && displayName != null) {
+                        val firstName = displayName.split(" ").first()
+                        val lastName = displayName.split(" ").last()
+                        if(firstName.isEmpty() && lastName.isEmpty()) continue
+                        details = details.copy(names = listOf(Name(details.names.firstOrNull()?.id?:0, "", firstName, "", lastName, "")))
+                    }
+
+                    println(details.names.first())
+
                     contacts += Contact(
                         id = id,
                         lookupKey = lookupKey,
-                        namePrefix = namePrefix,
-                        firstName = firstName,
-                        middleName = middleName,
-                        lastName = lastName,
-                        nameSuffix = nameSuffix,
                         companyName = companyName,
                         isFavorite = isFavorite,
-                        getDetails(context, id)
+                        details
                     )
                 }
             }
@@ -442,103 +414,84 @@ fun getDetails(context: Context, id: Long): ContactDetails {
     val contentResolver = context.contentResolver
     val contactId = id.toString()
 
-    // Phone Numbers
-    val phoneNumbers = mutableListOf<PhoneNumber>()
-    contentResolver.query(
-        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-        null,
-        "${ContactsContract.CommonDataKinds.Phone.CONTACT_ID} = ?",
-        arrayOf(contactId),
-        null
-    )?.use { cursor ->
-        while (cursor.moveToNext()) {
-            val id = cursor.getLong(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone._ID))
-            val number = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER))
-            val type = cursor.getInt(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.TYPE))
-            phoneNumbers.add(PhoneNumber(id, number, type))
-        }
-    }
-
-    // Emails
-    val emails = mutableListOf<Email>()
-    contentResolver.query(
-        ContactsContract.CommonDataKinds.Email.CONTENT_URI,
-        null,
-        "${ContactsContract.CommonDataKinds.Email.CONTACT_ID} = ?",
-        arrayOf(contactId),
-        null
-    )?.use { cursor ->
-        while (cursor.moveToNext()) {
-            val id = cursor.getLong(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Email._ID))
-            val email = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Email.ADDRESS))
-            val type = cursor.getInt(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Email.TYPE))
-            emails.add(Email(id, email, type))
-        }
-    }
-
-    // Addresses
-    val addresses = mutableListOf<Address>()
-    contentResolver.query(
-        ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_URI,
-        null,
-        "${ContactsContract.CommonDataKinds.StructuredPostal.CONTACT_ID} = ?",
-        arrayOf(contactId),
-        null
-    )?.use { cursor ->
-        while (cursor.moveToNext()) {
-            val id = cursor.getLong(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredPostal._ID))
-            val address = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredPostal.FORMATTED_ADDRESS))
-            val type = cursor.getInt(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.StructuredPostal.TYPE))
-            addresses.add(Address(id, address, type))
-        }
-    }
-
-    // Dates
-    val dates = mutableListOf<Event>()
-    contentResolver.query(
-        ContactsContract.Data.CONTENT_URI,
-        arrayOf(
-            ContactsContract.CommonDataKinds.Event._ID,
-            ContactsContract.CommonDataKinds.Event.START_DATE,
-            ContactsContract.CommonDataKinds.Event.TYPE
-        ),
-        "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
-        arrayOf(contactId, ContactsContract.CommonDataKinds.Event.CONTENT_ITEM_TYPE),
-        null
-    )?.use { cursor ->
-        while (cursor.moveToNext()) {
-            val id = cursor.getLong(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Event._ID))
-            val date = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Event.START_DATE))
-            val type = cursor.getInt(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Event.TYPE))
-            val localDate = if(date.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
-                LocalDate.parse(date, LocalDate.Formats.ISO)
-            } else if(date.matches(Regex("\\d{8}"))) {
-                LocalDate.parse(date, LocalDate.Format { year(); monthNumber(); day() })
-            } else {
-                continue
+    fun <T: ContactDetail<T>> queryData(projection: List<String>, mimeType: String, datumFromCursor: (Cursor) -> T?): List<T> {
+        val data = mutableListOf<T>()
+        contentResolver.query(
+            ContactsContract.Data.CONTENT_URI,
+            projection.toTypedArray(),
+            "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
+            arrayOf(contactId, mimeType),
+            null
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                datumFromCursor(cursor)?.let {
+                    data.add(it)
+                }
             }
-            dates.add(Event(id,localDate, type))
         }
+        return data;
+    }
+
+    val phoneNumbers = queryData(listOf(CDKPhone._ID, CDKPhone.NUMBER, CDKPhone.TYPE), CDKPhone.CONTENT_ITEM_TYPE) {
+        val id = it.getLong(it.getColumnIndexOrThrow(CDKPhone._ID))
+        val number = it.getString(it.getColumnIndexOrThrow(CDKPhone.NUMBER))
+        val type = it.getInt(it.getColumnIndexOrThrow(CDKPhone.TYPE))
+        PhoneNumber(id, number, type)
+    }
+
+    val emails = queryData(listOf(CDKEmail._ID, CDKEmail.ADDRESS, CDKEmail.TYPE), CDKEmail.CONTENT_ITEM_TYPE) {
+        val id = it.getLong(it.getColumnIndexOrThrow(CDKEmail._ID))
+        val email = it.getString(it.getColumnIndexOrThrow(CDKEmail.ADDRESS))
+        val type = it.getInt(it.getColumnIndexOrThrow(CDKEmail.TYPE))
+        Email(id, email, type)
+    }
+
+    val addresses = queryData(listOf(CDKStructuredPostal._ID, CDKStructuredPostal.FORMATTED_ADDRESS, CDKStructuredPostal.TYPE), CDKStructuredPostal.CONTENT_ITEM_TYPE) {
+        val id = it.getLong(it.getColumnIndexOrThrow(CDKStructuredPostal._ID))
+        val address = it.getString(it.getColumnIndexOrThrow(CDKStructuredPostal.FORMATTED_ADDRESS))
+        val type = it.getInt(it.getColumnIndexOrThrow(CDKStructuredPostal.TYPE))
+        Address(id, address, type)
     }
 
     // Dates
-    val photos = mutableListOf<Photo>()
-    contentResolver.query(
-        ContactsContract.Data.CONTENT_URI,
-        arrayOf(
-            CDKPhoto._ID,
-            CDKPhoto.PHOTO,
-        ),
-        "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
-        arrayOf(contactId, ContactsContract.CommonDataKinds.Event.CONTENT_ITEM_TYPE),
-        null
-    )?.use { cursor ->
-        while (cursor.moveToNext()) {
-            val id = cursor.getLong(cursor.getColumnIndexOrThrow(CDKPhoto._ID))
-            val photo = cursor.getString(cursor.getColumnIndexOrThrow(CDKPhoto.PHOTO))
-            photos.add(Photo(id,photo, 0))
+    val dates = queryData(listOf(CDKEvent._ID, CDKEvent.START_DATE, CDKEvent.TYPE), CDKEvent.CONTENT_ITEM_TYPE) { cursor ->
+        val id = cursor.getLong(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Event._ID))
+        val date = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Event.START_DATE))
+        val type = cursor.getInt(cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Event.TYPE))
+        val localDate = if(date.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
+            LocalDate.parse(date, LocalDate.Formats.ISO)
+        } else if(date.matches(Regex("\\d{8}"))) {
+            LocalDate.parse(date, LocalDate.Format { year(); monthNumber(); day() })
+        } else {
+            return@queryData null
         }
+        Event(id,localDate, type)
     }
 
-    return ContactDetails(phoneNumbers.distinct(), emails.distinct(), addresses.distinct(), dates.distinct(), photos.distinct())
+    // Photos
+    val photos = queryData(listOf(CDKPhoto._ID, CDKPhoto.PHOTO), CDKPhoto.CONTENT_ITEM_TYPE) { cursor ->
+        val id = cursor.getLong(cursor.getColumnIndexOrThrow(CDKPhoto._ID))
+        val photo = Base64.encode(cursor.getBlob(cursor.getColumnIndexOrThrow(CDKPhoto.PHOTO)))
+        Photo(id, photo)
+    }
+
+    val names = queryData(listOf(
+        CDKSName._ID,
+        CDKSName.PREFIX,
+        CDKSName.GIVEN_NAME,
+        CDKSName.MIDDLE_NAME,
+        CDKSName.FAMILY_NAME,
+        CDKSName.SUFFIX
+    ), CDKSName.CONTENT_ITEM_TYPE) { cursor ->
+        val id = cursor.getLong(cursor.getColumnIndexOrThrow(CDKSName._ID))
+        val namePrefix = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(CDKSName.PREFIX)) ?: ""
+        val firstName = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(CDKSName.GIVEN_NAME)) ?: ""
+        val middleName = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(CDKSName.MIDDLE_NAME)) ?: ""
+        val lastName = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(CDKSName.FAMILY_NAME)) ?: ""
+        val nameSuffix = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(CDKSName.SUFFIX)) ?: ""
+
+        Name(id, namePrefix, firstName, middleName, lastName, nameSuffix)
+    }
+
+    return ContactDetails(phoneNumbers.distinct(), emails.distinct(), addresses.distinct(), dates.distinct(), photos.distinct(), names.distinct())
 }

@@ -127,7 +127,7 @@ fun ContactDetailsPage(
                     }
                     IconButton(onClick = {
                         scope.launch(Dispatchers.IO) {
-                            val vcfFile = File(context.cacheDir, "${contact!!.name.replace(' ', '_')}.vcf")
+                            val vcfFile = File(context.cacheDir, "${contact!!.name.value.replace(' ', '_')}.vcf")
                             vcfFile.outputStream().use { outputStream ->
                                 VcfUtils.exportContacts(context, listOf(contact!!), outputStream)
                             }
@@ -145,7 +145,7 @@ fun ContactDetailsPage(
                     }
                     IconButton(onClick = {
                         scope.launch(Dispatchers.IO) {
-                            Contact.delete(context, contact!!)
+                            viewModel.deleteContact(contact!!)
                             withContext(Dispatchers.Main) {
                                 onDelete()
                             }
@@ -223,7 +223,7 @@ fun ContactDetailsPage(
 
             if(details.dates.isNotEmpty()) {
                 item {
-                    GroupedSection(title = "About ${contact!!.firstName}") {
+                    GroupedSection(title = "About ${contact!!.name.firstName}") {
                         details.dates.forEach { event ->
                             val eventIcon = when (event.typeString(context).lowercase()) {
                                 "birthday" -> painterResource(R.drawable.outline_cake_24)
@@ -281,7 +281,7 @@ fun ProfileHeader(contact: Contact) {
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = contact.name.first().uppercase(),
+                        text = contact.name.value.first().uppercase(),
                         color = Color.White,
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold
@@ -293,7 +293,7 @@ fun ProfileHeader(contact: Contact) {
         Spacer(modifier = Modifier.size(16.dp))
 
         Text(
-            text = contact.name,
+            text = contact.name.value,
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.SemiBold
         )

@@ -76,7 +76,7 @@ fun ContactList(
     val (favorites, otherContacts) = contacts.partition { it.isFavorite }
 
     val groupedContacts: SortedMap<Char, List<Contact>> = otherContacts
-        .groupBy { it.name.first().uppercaseChar() }
+        .groupBy { it.name.value.first().uppercaseChar() }
         .toSortedMap()
 
 
@@ -163,7 +163,7 @@ fun ContactListPick(mimeType: String?, contacts: List<Contact>, onClick: (Uri) -
     val (favorites, otherContacts) = contacts.partition { it.isFavorite }
 
     val groupedContacts: SortedMap<Char, List<Contact>> = otherContacts
-        .groupBy { it.name.first().uppercaseChar() }
+        .groupBy { it.name.value.first().uppercaseChar() }
         .toSortedMap()
 
     Scaffold(topBar = { TopAppBar({ Text("Contacts") }) }) { paddingValues ->
@@ -287,7 +287,7 @@ fun ContactItem(
                 .clip(RoundedCornerShape(16.dp, 16.dp, if(hasDropdown) 0.dp else 16.dp, if(hasDropdown) 0.dp else 16.dp)),
             headlineContent = {
                 Text(
-                    text = contact.name,
+                    text = contact.name.value,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
@@ -326,7 +326,7 @@ fun ContactItem(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = contact.name.first().uppercase(),
+                                text = contact.name.value.first().uppercase(),
                                 color = Color.White,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Bold

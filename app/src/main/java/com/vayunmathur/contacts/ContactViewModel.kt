@@ -31,6 +31,13 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         return contacts.value.find { it.id == contactId }
     }
 
+    fun deleteContact(contact: Contact) {
+        viewModelScope.launch(Dispatchers.IO) {
+            Contact.delete(getApplication(), contact)
+            _contacts.value = _contacts.value.filter { it.id != contact.id }
+        }
+    }
+
     fun getContactFlow(contactId: Long): Flow<Contact?> {
         return contacts.map { contacts -> contacts.find { it.id == contactId } }
     }
@@ -51,10 +58,11 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun saveContact(contact: Contact, details: ContactDetails) {
+    fun saveContact(contact: Contact) {
         viewModelScope.launch(Dispatchers.IO) {
             val contactId = contact.id
-            val oldDetails = contacts.value.find { it.id == contactId }?.details ?: ContactDetails(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+            val details = contact.details
+            val oldDetails = contacts.value.find { it.id == contactId }?.details ?: ContactDetails(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
             contact.save(getApplication(), details, oldDetails)
 
             if (contactId == 0L) {
@@ -72,17 +80,6 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
             }
-        }
-    }
-
-    fun deleteContacts(contactIds: Set<Long>) {
-        viewModelScope.launch(Dispatchers.IO) {
-            contactIds.forEach { id ->
-                getContact(id)?.let { contact ->
-                    Contact.delete(getApplication(), contact)
-                }
-            }
-            loadContacts()
         }
     }
 }

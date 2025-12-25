@@ -80,11 +80,11 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
     val details = contact?.details
     val context = LocalContext.current
 
-    var namePrefix by remember { mutableStateOf(contact?.namePrefix ?: "") }
-    var firstName by remember { mutableStateOf(contact?.firstName ?: "") }
-    var middleName by remember { mutableStateOf(contact?.middleName ?: "") }
-    var lastName by remember { mutableStateOf(contact?.lastName ?: "") }
-    var nameSuffix by remember { mutableStateOf(contact?.nameSuffix ?: "") }
+    var namePrefix by remember { mutableStateOf(contact?.name?.namePrefix ?: "") }
+    var firstName by remember { mutableStateOf(contact?.name?.firstName ?: "") }
+    var middleName by remember { mutableStateOf(contact?.name?.middleName ?: "") }
+    var lastName by remember { mutableStateOf(contact?.name?.lastName ?: "") }
+    var nameSuffix by remember { mutableStateOf(contact?.name?.nameSuffix ?: "") }
     var company by remember { mutableStateOf(contact?.companyName ?: "") }
     var photo by remember { mutableStateOf(contact?.photo) }
 
@@ -95,7 +95,7 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
             val byteArrayOutputStream = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, 100, byteArrayOutputStream)
             val value = Base64.encode(byteArrayOutputStream.toByteArray())
-            photo = photo?.withValue(value) ?: Photo(0, value, 0)
+            photo = photo?.withValue(value) ?: Photo(0, value)
         }
     }
 
@@ -105,7 +105,7 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
     val addresses = remember { mutableStateListOf<Address>() }
 
     LaunchedEffect(Unit) {
-        contact?.let { contact ->
+        details?.let { details ->
             phoneNumbers.addAll(details.phoneNumbers)
             emails.addAll(details.emails)
             dates.addAll(details.dates)
@@ -128,22 +128,18 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
                         val newContact = Contact(
                             contact?.id ?: 0,
                             contact?.lookupKey ?: "",
-                            namePrefix,
-                            firstName,
-                            middleName,
-                            lastName,
-                            nameSuffix,
                             company,
-                            photo,
-                            contact?.isFavorite ?: false
+                            contact?.isFavorite ?: false,
+                            ContactDetails(
+                                phoneNumbers,
+                                emails,
+                                addresses,
+                                dates,
+                                listOfNotNull(photo),
+                                listOf(Name(contact?.name?.id ?: 0, namePrefix, firstName, middleName, lastName, nameSuffix))
+                            )
                         )
-                        val contactDetails = ContactDetails(
-                            phoneNumbers,
-                            emails,
-                            addresses,
-                            dates
-                        )
-                        viewModel.saveContact(newContact, contactDetails)
+                        viewModel.saveContact(newContact)
                         backStack.removeAt(backStack.lastIndex)
                     }) {
                         Text("Save")
@@ -161,7 +157,7 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.height(24.dp))
-            AddPictureSection(photo, {
+            AddPictureSection(photo?.photo, {
                 pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }, {
                 photo = null
