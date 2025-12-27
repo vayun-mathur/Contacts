@@ -67,7 +67,7 @@ interface ContactDetail<T: ContactDetail<T>> {
                 PhoneNumber::class -> PhoneNumber(0, "", CDKPhone.TYPE_MOBILE)
                 Email::class -> Email(0, "", CDKEmail.TYPE_HOME)
                 Address::class -> Address(0, "", CDKStructuredPostal.TYPE_HOME)
-                Event::class -> Event(0, Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date, CDKEvent.TYPE_BIRTHDAY)
+                Event::class -> Event(0, Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date, CDKEvent.TYPE_OTHER)
                 else -> throw IllegalArgumentException("Unknown type")
             } as T
         }
@@ -178,7 +178,7 @@ data class Nickname(override val id: Long, val nickname: String, override val ty
     override val value: String
         get() = nickname
 
-    override fun withType(type: Int) = throw UnsupportedOperationException("Nickname type cannot be changed")
+    override fun withType(type: Int) = copy(type = type)
     override fun withValue(value: String) = copy(nickname = value)
 
     override fun typeString(context: Context) = throw UnsupportedOperationException("Nickname types shouldn't be written")
@@ -202,6 +202,9 @@ data class Contact(
 
     val nickname: Nickname
         get() = details.nicknames.first { it.type == CDKNickname.TYPE_DEFAULT }
+
+    val birthday: Event?
+        get() = details.dates.firstOrNull { it.type == CDKEvent.TYPE_BIRTHDAY }
 
     val note: Note
         get() = details.notes.first()
@@ -369,6 +372,30 @@ data class Contact(
 
     companion object {
 
+        private fun processDetails(details: ContactDetails, displayName: String): ContactDetails? {
+            var details = details
+            if(details.names.isEmpty())
+                details = details.copy(names = listOf(Name(0, "", "", "", "", "")))
+
+            if((details.names.first().firstName.isEmpty() && details.names.first().lastName.isEmpty()) && displayName != null) {
+                val firstName = displayName.split(" ").first()
+                val lastName = displayName.split(" ").last()
+                if(firstName.isEmpty() && lastName.isEmpty()) return null
+                details = details.copy(names = listOf(Name(details.names.first().id, "", firstName, "", lastName, "")))
+            }
+
+            if(details.orgs.isEmpty())
+                details = details.copy(orgs = listOf(Organization(0, "")))
+
+            if(details.notes.isEmpty())
+                details = details.copy(notes = listOf(Note(0, "")))
+
+            if(details.nicknames.find { it.type == CDKNickname.TYPE_DEFAULT } == null)
+                details = details.copy(nicknames = details.nicknames + Nickname(0, "", CDKNickname.TYPE_DEFAULT))
+
+            return details
+        }
+
         private fun getContacts(context: Context, contactId: Long?): List<Contact> {
             val contentResolver = context.contentResolver
             val uri = ContactsContract.RawContacts.CONTENT_URI
@@ -400,30 +427,6 @@ data class Contact(
             return contacts
         }
 
-        private fun processDetails(details: ContactDetails, displayName: String): ContactDetails? {
-            var details = details
-            if(details.names.isEmpty())
-                details = details.copy(names = listOf(Name(0, "", "", "", "", "")))
-
-            if((details.names.first().firstName.isEmpty() && details.names.first().lastName.isEmpty()) && displayName != null) {
-                val firstName = displayName.split(" ").first()
-                val lastName = displayName.split(" ").last()
-                if(firstName.isEmpty() && lastName.isEmpty()) return null
-                details = details.copy(names = listOf(Name(details.names.first().id, "", firstName, "", lastName, "")))
-            }
-
-            if(details.orgs.isEmpty())
-                details = details.copy(orgs = listOf(Organization(0, "")))
-
-            if(details.notes.isEmpty())
-                details = details.copy(notes = listOf(Note(0, "")))
-
-            if(details.nicknames.find { it.type == CDKNickname.TYPE_DEFAULT } == null)
-                details = details.copy(nicknames = details.nicknames + Nickname(0, "", CDKNickname.TYPE_DEFAULT))
-
-            return details
-        }
-
         private fun tryGetProfile(context: Context): Contact? {
             val contentResolver = context.contentResolver
             val uri = Profile.CONTENT_URI
@@ -436,9 +439,9 @@ data class Contact(
 
             cursor?.use {
                 while (it.moveToNext()) {
-                    val id = it.getLong(it.getColumnIndexOrThrow(ContactsContract.Contacts._ID))
-                    val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY))
-                    val isFavorite = it.getInt(it.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)) == 1
+                    val id = it.getLong(it.getColumnIndexOrThrow(ContactsContract.Profile._ID))
+                    val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.Profile.DISPLAY_NAME_PRIMARY))
+                    val isFavorite = it.getInt(it.getColumnIndexOrThrow(ContactsContract.Profile.STARRED)) == 1
 
                     var details = getDetails(context, id, true)
                     details = processDetails(details, displayName) ?: continue

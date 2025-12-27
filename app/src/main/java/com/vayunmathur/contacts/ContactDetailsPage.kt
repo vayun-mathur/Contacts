@@ -224,24 +224,26 @@ fun ContactDetailsPage(
             if(details.dates.isNotEmpty()) {
                 item {
                     GroupedSection(title = "About ${contact!!.name.firstName}") {
-                        details.dates.forEach { event ->
-                            val eventIcon = when (event.typeString(context).lowercase()) {
-                                "birthday" -> painterResource(R.drawable.outline_cake_24)
-                                else -> painterResource(R.drawable.outline_event_24)
-                            }
-                            val date = event.startDate.format(LocalDate.Format {
-                                monthName(MonthNames.ENGLISH_FULL)
-                                chars(" ")
-                                day()
-                                chars(", ")
-                                year()
-                            })
+                        val format = LocalDate.Format {
+                            monthName(MonthNames.ENGLISH_FULL)
+                            chars(" ")
+                            day()
+                            chars(", ")
+                            year()
+                        }
+                        contact!!.birthday?.let { birthday ->
                             ListItem(
-                                headlineContent = { Text(date) },
+                                headlineContent = { Text(birthday.startDate.format(format)) },
+                                supportingContent = { Text("Birthday") },
+                                leadingContent = { Icon(painterResource(R.drawable.outline_cake_24), birthday.typeString(context)) },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                            )
+                        }
+                        details.dates.filter{it.type != CDKEvent.TYPE_BIRTHDAY }.forEach { event ->
+                            ListItem(
+                                headlineContent = { Text(event.startDate.format(format)) },
                                 supportingContent = { Text(event.typeString(context)) },
-                                leadingContent = {
-                                    Icon(eventIcon, event.typeString(context))
-                                },
+                                leadingContent = { Icon(painterResource(R.drawable.outline_event_24), event.typeString(context)) },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                             )
                         }

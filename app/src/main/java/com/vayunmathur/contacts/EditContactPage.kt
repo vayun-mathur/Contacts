@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -73,6 +74,7 @@ import kotlin.io.encoding.Base64
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 import androidx.core.graphics.scale
+import kotlin.time.Clock
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,6 +92,7 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
     var noteContent by remember { mutableStateOf(contact?.note?.content ?: "") }
     var nickname by remember { mutableStateOf(contact?.nickname?.nickname ?: "") }
     var photo by remember { mutableStateOf(contact?.photo) }
+    var birthday by remember { mutableStateOf(contact?.birthday?.startDate) }
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
@@ -118,11 +121,14 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
                 },
                 actions = {
                     Button(onClick = {
+                        val birthdayID = contact?.birthday?.id
+                        val dates2 = dates.filter { it.type != CDKEvent.TYPE_BIRTHDAY }.toMutableList();
+                        birthday?.let { birthday -> dates2 += Event(birthdayID ?: 0, birthday, CDKEvent.TYPE_BIRTHDAY) }
                         val details = ContactDetails(
                             phoneNumbers,
                             emails,
                             addresses,
-                            dates,
+                            dates2,
                             listOfNotNull(photo),
                             listOf(Name(contact?.name?.id ?: 0, namePrefix, firstName, middleName, lastName, nameSuffix)),
                             listOf(Organization(contact?.org?.id ?: 0, company)),
@@ -223,10 +229,12 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
 
             Spacer(Modifier.height(16.dp))
 
+            Birthday(birthday) { birthday = it }
+
             DateDetailsSection(
                 dates,
                 painterResource(R.drawable.outline_event_24),
-                listOf(CDKEvent.TYPE_BIRTHDAY, CDKEvent.TYPE_ANNIVERSARY, CDKEvent.TYPE_OTHER)
+                listOf(CDKEvent.TYPE_ANNIVERSARY, CDKEvent.TYPE_OTHER)
             )
 
             Spacer(Modifier.height(12.dp))
@@ -316,6 +324,73 @@ fun NameSuffixChooser(nameSuffix: String, onNameSuffixChange: (String) -> Unit) 
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTime::class)
 @Composable
+private fun Birthday(
+    birthday: LocalDate?,
+    setBirthday: (LocalDate?) -> Unit
+) {
+    var openDialog by remember { mutableStateOf(false) }
+    Box {
+        OutlinedTextField(
+            value = birthday?.format(LocalDate.Format {
+                monthName(MonthNames.ENGLISH_FULL)
+                chars(" ")
+                day()
+                chars(", ")
+                year()
+            }) ?: "",
+            onValueChange = { },
+            readOnly = true,
+            label = {Text("Birthday")},
+            modifier = Modifier.fillMaxWidth(),
+            trailingIcon = {
+                IconButton(onClick = { setBirthday(null) }) {
+                    Icon(
+                        painterResource(R.drawable.baseline_remove_circle_outline_24),
+                        "Remove birthday"
+                    )
+                }
+            }
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+        ) {
+            Box(Modifier.fillMaxWidth(0.9f).fillMaxHeight()
+                .clickable { openDialog = true }){}
+        }
+    }
+
+    if (openDialog) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = (birthday?: Clock.System.now().toLocalDateTime(
+                TimeZone.currentSystemDefault()).date).atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds()
+        )
+        DatePickerDialog(
+            onDismissRequest = { openDialog = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let {
+                        setBirthday(Instant.fromEpochMilliseconds(it).toLocalDateTime(TimeZone.UTC).date)
+                    }
+                    openDialog = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { openDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalTime::class)
+@Composable
 private fun ColumnScope.DateDetailsSection(
     details: SnapshotStateList<Event>,
     icon: Painter,
@@ -324,6 +399,7 @@ private fun ColumnScope.DateDetailsSection(
     val detailType = "Dates"
     val context = LocalContext.current
     details.forEachIndexed { index, detail ->
+        if(detail.type == CDKEvent.TYPE_BIRTHDAY) return@forEachIndexed
         var openDialog by remember { mutableStateOf(false) }
         Box {
             OutlinedTextField(
@@ -373,8 +449,10 @@ private fun ColumnScope.DateDetailsSection(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .clickable { openDialog = true }
-            )
+            ) {
+                Box(Modifier.fillMaxWidth(0.6f).fillMaxHeight()
+                    .clickable { openDialog = true }) {}
+            }
         }
 
         if (openDialog) {
@@ -406,7 +484,7 @@ private fun ColumnScope.DateDetailsSection(
         }
         Spacer(Modifier.height(8.dp))
     }
-    if (details.isEmpty()) {
+    if (details.none { it.type != CDKEvent.TYPE_BIRTHDAY }) {
         FilledTonalButton(
             onClick = { details += ContactDetail.default<Event>() },
             modifier = Modifier.fillMaxWidth()
