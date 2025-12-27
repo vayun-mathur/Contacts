@@ -81,18 +81,6 @@ class MainActivity : ComponentActivity() {
                     NoPermissionsScreen(permissions) { hasPermissions = it }
                 } else {
                     val viewModel: ContactViewModel = viewModel()
-                    val lifecycleOwner = LocalLifecycleOwner.current
-                    DisposableEffect(lifecycleOwner) {
-                        val observer = LifecycleEventObserver { _, event ->
-                            if (event == Lifecycle.Event.ON_RESUME) {
-                                viewModel.loadContacts()
-                            }
-                        }
-                        lifecycleOwner.lifecycle.addObserver(observer)
-                        onDispose {
-                            lifecycleOwner.lifecycle.removeObserver(observer)
-                        }
-                    }
 
                     if ((intent?.scheme == "content" || intent?.scheme == "file") && intent?.type?.contains("vcard") == true && intent?.data != null) {
                          var showDialog by remember { mutableStateOf(true) }
