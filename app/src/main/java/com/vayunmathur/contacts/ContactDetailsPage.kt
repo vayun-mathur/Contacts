@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -141,15 +142,18 @@ fun ContactDetailsPage(
                             contentDescription = "Share"
                         )
                     }
-                    IconButton(onClick = {
-                        scope.launch(Dispatchers.IO) {
-                            onDelete()
-                            viewModel.deleteContact(contact!!)
+                    if(contact?.isProfile == false) {
+                        IconButton(onClick = {
+                            scope.launch(Dispatchers.IO) {
+                                onDelete()
+                                viewModel.deleteContact(contact!!)
+                            }
+                        }) {
+                            Icon(
+                                painterResource(R.drawable.outline_delete_24),
+                                contentDescription = "Delete"
+                            )
                         }
-                    }) {
-                        Icon(painterResource(R.drawable.outline_delete_24),
-                            contentDescription = "Delete"
-                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

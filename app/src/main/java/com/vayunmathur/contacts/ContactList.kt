@@ -39,6 +39,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +58,7 @@ import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import kotlinx.coroutines.launch
 import java.util.SortedMap
+import java.util.SortedSet
 import kotlin.io.encoding.Base64
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,7 +76,7 @@ fun ContactList(
     val (favorites, otherContacts) = mainContacts.partition { it.isFavorite }
 
     val groupedContacts: SortedMap<Char, List<Contact>> = otherContacts
-        .groupBy { it.name.value.first().uppercaseChar() }
+        .groupBy { it.name.value.first().uppercaseChar() }.mapValues { (_, contacts) -> contacts.sortedBy { it.name.value } }
         .toSortedMap()
 
 

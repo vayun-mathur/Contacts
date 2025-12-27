@@ -130,7 +130,6 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
                         val newContact = contact?.copy(details = details) ?: Contact(
                             false,
                             0,
-                            "",
                             false,
                             details = details
                         )

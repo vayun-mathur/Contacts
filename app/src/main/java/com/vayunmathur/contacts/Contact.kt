@@ -1,6 +1,7 @@
 package com.vayunmathur.contacts
 
 import android.content.ContentProviderOperation
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
@@ -174,7 +175,6 @@ data class Note(override val id: Long, val content: String): ContactDetail<Note>
 data class Contact(
     val isProfile: Boolean,
     val id: Long,
-    val lookupKey: String,
     val isFavorite: Boolean,
     val details: ContactDetails
 ) {
@@ -191,7 +191,7 @@ data class Contact(
         get() = details.notes.first()
 
     val CONTACT_URI: Uri
-        get() = if(isProfile) Profile.CONTENT_URI else ContactsContract.Contacts.CONTENT_URI
+        get() = if(isProfile) Profile.CONTENT_URI else ContactsContract.RawContacts.CONTENT_URI
 
     val DATA_URI: Uri
         get() = if(isProfile) Uri.withAppendedPath(ContactsContract.Profile.CONTENT_URI, ContactsContract.Contacts.Data.CONTENT_DIRECTORY) else ContactsContract.Data.CONTENT_URI
@@ -199,7 +199,7 @@ data class Contact(
     fun save(context: Context, newDetails: ContactDetails, oldDetails: ContactDetails) {
         val ops = ArrayList<ContentProviderOperation>()
         if (id == 0L) {
-            ops += ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+            ops += ContentProviderOperation.newInsert(CONTACT_URI)
                 .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
                 .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
                 .build()
@@ -209,7 +209,7 @@ data class Contact(
             // Favorite
             ops += ContentProviderOperation.newUpdate(CONTACT_URI)
                 .withSelection("${ContactsContract.Contacts._ID} = ?", arrayOf(id.toString()))
-                .withValue(ContactsContract.Contacts.STARRED, if (isFavorite) 1 else 0)
+                .withValue(ContactsContract.RawContacts.STARRED, if (isFavorite) 1 else 0)
                 .build()
 
             // details
@@ -220,27 +220,28 @@ data class Contact(
 
     private fun getRawContactId(context: Context): String? {
         if(!isProfile) {
-            var rawContactId: String? = null
-            val cursor = context.contentResolver.query(
-                ContactsContract.RawContacts.CONTENT_URI,
-                arrayOf(ContactsContract.RawContacts._ID),
-                ContactsContract.RawContacts.CONTACT_ID + "=?",
-                arrayOf(id.toString()),
-                null
-            )
-
-            if (cursor != null) {
-                if (cursor.moveToFirst()) {
-                    // We just take the first RawContact found.
-                    // In complex cases (e.g., Google vs WhatsApp contacts), you might want to filter by account type.
-                    val idIndex = cursor.getColumnIndex(ContactsContract.RawContacts._ID)
-                    if (idIndex != -1) {
-                        rawContactId = cursor.getString(idIndex)
-                    }
-                }
-                cursor.close()
-            }
-            return rawContactId
+            return id.toString();
+//            var rawContactId: String? = null
+//            val cursor = context.contentResolver.query(
+//                ContactsContract.RawContacts.CONTENT_URI,
+//                arrayOf(ContactsContract.RawContacts._ID),
+//                ContactsContract.RawContacts.CONTACT_ID + "=?",
+//                arrayOf(id.toString()),
+//                null
+//            )
+//
+//            if (cursor != null) {
+//                if (cursor.moveToFirst()) {
+//                    // We just take the first RawContact found.
+//                    // In complex cases (e.g., Google vs WhatsApp contacts), you might want to filter by account type.
+//                    val idIndex = cursor.getColumnIndex(ContactsContract.RawContacts._ID)
+//                    if (idIndex != -1) {
+//                        rawContactId = cursor.getString(idIndex)
+//                    }
+//                }
+//                cursor.close()
+//            }
+//            return rawContactId
         } else {
             var rawContactId: String? = null
             val cursor = context.contentResolver.query(
@@ -371,12 +372,12 @@ data class Contact(
 
         private fun getContacts(context: Context, contactId: Long?): List<Contact> {
             val contentResolver = context.contentResolver
-            val uri = ContactsContract.Contacts.CONTENT_URI
+            val uri = ContactsContract.RawContacts.CONTENT_URI
             val projection = arrayOf(
-                ContactsContract.Contacts._ID,
-                ContactsContract.Contacts.LOOKUP_KEY,
-                ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,
-                ContactsContract.Contacts.STARRED,
+                ContactsContract.RawContacts._ID,
+                ContactsContract.RawContacts.DISPLAY_NAME_PRIMARY,
+                ContactsContract.RawContacts.STARRED,
+                ContactsContract.RawContacts.ACCOUNT_NAME
             )
             val cursor = contentResolver.query(uri, projection, if(contactId == null) null else "${ContactsContract.Contacts._ID} = ?", listOfNotNull(contactId?.toString()).toTypedArray(), null)
 
@@ -384,10 +385,12 @@ data class Contact(
 
             cursor?.use {
                 while (it.moveToNext()) {
-                    val id = it.getLong(it.getColumnIndexOrThrow(ContactsContract.Contacts._ID))
-                    val lookupKey = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.LOOKUP_KEY))
-                    val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY))
-                    val isFavorite = it.getInt(it.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)) == 1
+                    val id = it.getLong(it.getColumnIndexOrThrow(ContactsContract.RawContacts._ID))
+                    val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.RawContacts.DISPLAY_NAME_PRIMARY))
+                    val isFavorite = it.getInt(it.getColumnIndexOrThrow(ContactsContract.RawContacts.STARRED)) == 1
+                    val account = it.getStringOrNull(it.getColumnIndexOrThrow(ContactsContract.RawContacts.ACCOUNT_NAME))
+                    if(account != null) continue
+                    println("ACCOUNT $account")
 
                     var details = getDetails(context, id, false)
                     if((details.names.isEmpty() || (details.names.first().firstName.isEmpty() && details.names.first().lastName.isEmpty())) && displayName != null) {
@@ -403,7 +406,7 @@ data class Contact(
                     if(details.notes.isEmpty())
                         details = details.copy(notes = listOf(Note(0, "")))
 
-                    contacts += Contact(false, id, lookupKey, isFavorite, details)
+                    contacts += Contact(false, id, isFavorite, details)
                 }
             }
             return contacts
@@ -414,7 +417,6 @@ data class Contact(
             val uri = Profile.CONTENT_URI
             val projection = arrayOf(
                 Profile._ID,
-                Profile.LOOKUP_KEY,
                 Profile.DISPLAY_NAME_PRIMARY,
                 Profile.STARRED,
             )
@@ -423,7 +425,6 @@ data class Contact(
             cursor?.use {
                 while (it.moveToNext()) {
                     val id = it.getLong(it.getColumnIndexOrThrow(ContactsContract.Contacts._ID))
-                    val lookupKey = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.LOOKUP_KEY))
                     val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY))
                     val isFavorite = it.getInt(it.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)) == 1
                     println(id)
@@ -450,7 +451,7 @@ data class Contact(
                     if(details.notes.isEmpty())
                         details = details.copy(notes = listOf(Note(0, "")))
 
-                    return Contact(true, id, lookupKey, isFavorite, details)
+                    return Contact(true, id, isFavorite, details)
                 }
             }
             return null
@@ -478,8 +479,9 @@ data class Contact(
             getContacts(context, null) + getProfile(context)
 
         fun delete(context: Context, contact: Contact) {
+            if(contact.isProfile) return
             context.contentResolver.delete(
-                Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_LOOKUP_URI, contact.lookupKey),
+                ContentUris.withAppendedId(ContactsContract.RawContacts.CONTENT_URI, contact.id),
                 null, null
             )
         }
@@ -495,7 +497,7 @@ fun getDetails(context: Context, id: Long, isProfile: Boolean = false): ContactD
         contentResolver.query(
             if(isProfile) Uri.withAppendedPath(ContactsContract.Profile.CONTENT_URI, ContactsContract.Contacts.Data.CONTENT_DIRECTORY) else ContactsContract.Data.CONTENT_URI,
             projection.toTypedArray(),
-            "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
+            "${ContactsContract.Data.RAW_CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
             arrayOf(contactId, mimeType),
             null
         )?.use { cursor ->

@@ -70,7 +70,6 @@ object VcfUtils {
                         val newContact = Contact(
                             false,
                             id = 0,
-                            lookupKey = "",
                             isFavorite = false,
                             ContactDetails(
                                 phoneNumbers = builder.phoneNumbers,

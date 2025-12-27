@@ -194,6 +194,7 @@ fun Navigation(viewModel: ContactViewModel) {
     val backStack = rememberNavBackStack(ContactsScreen)
     val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>()
 
+
     Scaffold(contentWindowInsets = WindowInsets.displayCutout
     ) { paddingValues ->
         NavDisplay(modifier = Modifier.padding(paddingValues).consumeWindowInsets(paddingValues),

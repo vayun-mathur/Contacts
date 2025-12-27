@@ -69,17 +69,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
             if (contactId == 0L) {
                 loadContacts()
             } else {
-                val updatedContact = Contact.getContact(getApplication(), contactId)
-                withContext(Dispatchers.Main) {
-                    if (updatedContact != null) {
-                        val index = _contacts.value.indexOfFirst { it.id == updatedContact.id }
-                        if (index != -1) {
-                            val newList = _contacts.value.toMutableList()
-                            newList[index] = updatedContact
-                            _contacts.value = newList
-                        }
-                    }
-                }
+                loadContact(contactId)
             }
         }
     }
