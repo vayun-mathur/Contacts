@@ -332,7 +332,7 @@ fun ContactItem(
             },
             leadingContent = {
                 Box(
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(50.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     contact.photo?.let {
@@ -371,6 +371,12 @@ fun ContactItem(
                             )
                         }
                     }
+                }
+            },
+
+            supportingContent = {
+                if(contact.org.company.isNotEmpty()) {
+                    Text(contact.org.company)
                 }
             },
 
