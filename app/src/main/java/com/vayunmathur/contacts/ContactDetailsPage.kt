@@ -304,8 +304,11 @@ fun ProfileHeader(contact: Contact) {
 
         Spacer(modifier = Modifier.size(16.dp))
 
+        var nameString = contact.name.value
+        if(contact.nickname.value.isNotBlank()) nameString += " (${contact.nickname.value})"
+
         Text(
-            text = contact.name.value,
+            text = nameString,
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.SemiBold
         )

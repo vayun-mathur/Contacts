@@ -79,7 +79,8 @@ object VcfUtils {
                                 photos = emptyList(),
                                 names = listOf(Name(0, builder.namePrefix, builder.firstName, builder.middleName, builder.lastName, builder.nameSuffix)),
                                 orgs = listOf(Organization(0, builder.companyName)),
-                                notes = emptyList()
+                                notes = emptyList(),
+                                nicknames = emptyList()
                             )
                         )
                         contactsToSave.add(newContact)

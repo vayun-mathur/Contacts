@@ -88,6 +88,7 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
     var nameSuffix by remember { mutableStateOf(contact?.name?.nameSuffix ?: "") }
     var company by remember { mutableStateOf(contact?.org?.company ?: "") }
     var noteContent by remember { mutableStateOf(contact?.note?.content ?: "") }
+    var nickname by remember { mutableStateOf(contact?.nickname?.nickname ?: "") }
     var photo by remember { mutableStateOf(contact?.photo) }
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -125,7 +126,8 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
                             listOfNotNull(photo),
                             listOf(Name(contact?.name?.id ?: 0, namePrefix, firstName, middleName, lastName, nameSuffix)),
                             listOf(Organization(contact?.org?.id ?: 0, company)),
-                            listOf(Note(contact?.note?.id ?: 0, noteContent))
+                            listOf(Note(contact?.note?.id ?: 0, noteContent)),
+                            listOf(Nickname(contact?.nickname?.id ?: 0, nickname, CDKNickname.TYPE_DEFAULT))
                         )
                         val newContact = contact?.copy(details = details) ?: Contact(
                             false,
@@ -180,6 +182,14 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
                 onValueChange = { lastName = it },
                 label = { Text("Last name") },
                 trailingIcon = { NameSuffixChooser(nameSuffix) { nameSuffix = it } },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = nickname,
+                onValueChange = { nickname = it },
+                label = { Text("Nickname") },
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(16.dp))

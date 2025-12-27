@@ -28,15 +28,16 @@ data class ContactDetails(
     val photos: List<Photo>,
     val names: List<Name>,
     val orgs: List<Organization>,
-    val notes: List<Note>
+    val notes: List<Note>,
+    val nicknames: List<Nickname>
 ) {
     fun all(): List<ContactDetail<*>> {
-        return phoneNumbers + emails + addresses + dates + photos + names + orgs + notes
+        return phoneNumbers + emails + addresses + dates + photos + names + orgs + notes + nicknames
     }
 
     companion object {
         fun empty(): ContactDetails {
-            return ContactDetails(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+            return ContactDetails(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
         }
     }
 }
@@ -49,6 +50,7 @@ typealias CDKPhoto = ContactsContract.CommonDataKinds.Photo
 typealias CDKSName = ContactsContract.CommonDataKinds.StructuredName
 typealias CDKOrg = ContactsContract.CommonDataKinds.Organization
 typealias CDKNote = ContactsContract.CommonDataKinds.Note
+typealias CDKNickname = ContactsContract.CommonDataKinds.Nickname
 
 interface ContactDetail<T: ContactDetail<T>> {
     val id: Long
@@ -166,9 +168,20 @@ data class Note(override val id: Long, val content: String): ContactDetail<Note>
         get() = content
 
     override fun withType(type: Int) = throw UnsupportedOperationException("Cannot change type of note")
-    override fun withValue(value: String) = Note(id, value)
+    override fun withValue(value: String) = copy(content = value)
 
     override fun typeString(context: Context) = throw UnsupportedOperationException("Note doesn't have type")
+}
+
+@Serializable
+data class Nickname(override val id: Long, val nickname: String, override val type: Int): ContactDetail<Nickname> {
+    override val value: String
+        get() = nickname
+
+    override fun withType(type: Int) = throw UnsupportedOperationException("Nickname type cannot be changed")
+    override fun withValue(value: String) = copy(nickname = value)
+
+    override fun typeString(context: Context) = throw UnsupportedOperationException("Nickname types shouldn't be written")
 }
 
 @Serializable
@@ -186,6 +199,9 @@ data class Contact(
 
     val org: Organization
         get() = details.orgs.first()
+
+    val nickname: Nickname
+        get() = details.nicknames.first { it.type == CDKNickname.TYPE_DEFAULT }
 
     val note: Note
         get() = details.notes.first()
@@ -220,28 +236,7 @@ data class Contact(
 
     private fun getRawContactId(context: Context): String? {
         if(!isProfile) {
-            return id.toString();
-//            var rawContactId: String? = null
-//            val cursor = context.contentResolver.query(
-//                ContactsContract.RawContacts.CONTENT_URI,
-//                arrayOf(ContactsContract.RawContacts._ID),
-//                ContactsContract.RawContacts.CONTACT_ID + "=?",
-//                arrayOf(id.toString()),
-//                null
-//            )
-//
-//            if (cursor != null) {
-//                if (cursor.moveToFirst()) {
-//                    // We just take the first RawContact found.
-//                    // In complex cases (e.g., Google vs WhatsApp contacts), you might want to filter by account type.
-//                    val idIndex = cursor.getColumnIndex(ContactsContract.RawContacts._ID)
-//                    if (idIndex != -1) {
-//                        rawContactId = cursor.getString(idIndex)
-//                    }
-//                }
-//                cursor.close()
-//            }
-//            return rawContactId
+            return id.toString()
         } else {
             var rawContactId: String? = null
             val cursor = context.contentResolver.query(
@@ -325,6 +320,7 @@ data class Contact(
                 is Name -> CDKSName.CONTENT_ITEM_TYPE
                 is Organization -> CDKOrg.CONTENT_ITEM_TYPE
                 is Note -> CDKNote.CONTENT_ITEM_TYPE
+                is Nickname -> CDKNickname.CONTENT_ITEM_TYPE
                 else -> throw IllegalArgumentException("Unknown detail type")
             })
         }
@@ -359,9 +355,12 @@ data class Contact(
             is Organization -> this
                 .withValue(CDKOrg.COMPANY, detail.company)
                 .build()
-
             is Note -> this
                 .withValue(CDKNote.NOTE, detail.content)
+                .build()
+            is Nickname -> this
+                .withValue(CDKNickname.NAME, detail.nickname)
+                .withValue(CDKNickname.TYPE, detail.type)
                 .build()
 
             else -> throw IllegalArgumentException("Unknown detail type")
@@ -393,23 +392,36 @@ data class Contact(
                     println("ACCOUNT $account")
 
                     var details = getDetails(context, id, false)
-                    if((details.names.isEmpty() || (details.names.first().firstName.isEmpty() && details.names.first().lastName.isEmpty())) && displayName != null) {
-                        val firstName = displayName.split(" ").first()
-                        val lastName = displayName.split(" ").last()
-                        if(firstName.isEmpty() && lastName.isEmpty()) continue
-                        details = details.copy(names = listOf(Name(details.names.firstOrNull()?.id?:0, "", firstName, "", lastName, "")))
-                    }
-
-                    if(details.orgs.isEmpty())
-                        details = details.copy(orgs = listOf(Organization(0, "")))
-
-                    if(details.notes.isEmpty())
-                        details = details.copy(notes = listOf(Note(0, "")))
+                    details = processDetails(details, displayName) ?: continue
 
                     contacts += Contact(false, id, isFavorite, details)
                 }
             }
             return contacts
+        }
+
+        private fun processDetails(details: ContactDetails, displayName: String): ContactDetails? {
+            var details = details
+            if(details.names.isEmpty())
+                details = details.copy(names = listOf(Name(0, "", "", "", "", "")))
+
+            if((details.names.first().firstName.isEmpty() && details.names.first().lastName.isEmpty()) && displayName != null) {
+                val firstName = displayName.split(" ").first()
+                val lastName = displayName.split(" ").last()
+                if(firstName.isEmpty() && lastName.isEmpty()) return null
+                details = details.copy(names = listOf(Name(details.names.first().id, "", firstName, "", lastName, "")))
+            }
+
+            if(details.orgs.isEmpty())
+                details = details.copy(orgs = listOf(Organization(0, "")))
+
+            if(details.notes.isEmpty())
+                details = details.copy(notes = listOf(Note(0, "")))
+
+            if(details.nicknames.find { it.type == CDKNickname.TYPE_DEFAULT } == null)
+                details = details.copy(nicknames = details.nicknames + Nickname(0, "", CDKNickname.TYPE_DEFAULT))
+
+            return details
         }
 
         private fun tryGetProfile(context: Context): Contact? {
@@ -427,29 +439,9 @@ data class Contact(
                     val id = it.getLong(it.getColumnIndexOrThrow(ContactsContract.Contacts._ID))
                     val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY))
                     val isFavorite = it.getInt(it.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)) == 1
-                    println(id)
-                    println(displayName)
-                    println("PROFILE")
 
                     var details = getDetails(context, id, true)
-
-                    println(details)
-
-                    if(details.names.isEmpty())
-                        details = details.copy(names = listOf(Name(0, "", "", "", "", "")))
-
-                    if((details.names.first().firstName.isEmpty() && details.names.first().lastName.isEmpty()) && displayName != null) {
-                        val firstName = displayName.split(" ").first()
-                        val lastName = displayName.split(" ").last()
-                        if(firstName.isEmpty() && lastName.isEmpty()) continue
-                        details = details.copy(names = listOf(Name(details.names.first().id, "", firstName, "", lastName, "")))
-                    }
-
-                    if(details.orgs.isEmpty())
-                        details = details.copy(orgs = listOf(Organization(0, "")))
-
-                    if(details.notes.isEmpty())
-                        details = details.copy(notes = listOf(Note(0, "")))
+                    details = processDetails(details, displayName) ?: continue
 
                     return Contact(true, id, isFavorite, details)
                 }
@@ -583,5 +575,12 @@ fun getDetails(context: Context, id: Long, isProfile: Boolean = false): ContactD
         Note(id, note)
     }
 
-    return ContactDetails(phoneNumbers.distinct(), emails.distinct(), addresses.distinct(), dates.distinct(), photos.distinct(), names.distinct(), orgs.distinct(), note.distinct())
+    val nicknames = queryData(listOf(CDKNickname._ID, CDKNickname.NAME, CDKNickname.TYPE), CDKNickname.CONTENT_ITEM_TYPE) {
+        val id = it.getLong(it.getColumnIndexOrThrow(CDKNickname._ID))
+        val nickname = it.getString(it.getColumnIndexOrThrow(CDKNickname.NAME))
+        val type = it.getInt(it.getColumnIndexOrThrow(CDKNickname.TYPE))
+        Nickname(id, nickname, type)
+    }
+
+    return ContactDetails(phoneNumbers.distinct(), emails.distinct(), addresses.distinct(), dates.distinct(), photos.distinct(), names.distinct(), orgs.distinct(), note.distinct(), nicknames.distinct())
 }

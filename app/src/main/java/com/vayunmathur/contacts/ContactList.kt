@@ -324,8 +324,10 @@ fun ContactItem(
             modifier = modifier
                 .clip(RoundedCornerShape(16.dp, 16.dp, if(hasDropdown) 0.dp else 16.dp, if(hasDropdown) 0.dp else 16.dp)),
             headlineContent = {
+                var nameString = contact.name.value
+                if(contact.nickname.value.isNotBlank()) nameString += " (${contact.nickname.value})"
                 Text(
-                    text = contact.name.value,
+                    text = nameString,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
