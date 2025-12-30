@@ -1,4 +1,4 @@
-package com.vayunmathur.contacts
+package com.vayunmathur.contacts.ui
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -39,7 +39,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,17 +54,23 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavBackStack
-import androidx.navigation3.runtime.NavKey
+import com.vayunmathur.contacts.CDKEmail
+import com.vayunmathur.contacts.CDKPhone
+import com.vayunmathur.contacts.CDKStructuredPostal
+import com.vayunmathur.contacts.Contact
+import com.vayunmathur.contacts.ContactViewModel
+import com.vayunmathur.contacts.R
+import com.vayunmathur.contacts.Route
+import com.vayunmathur.contacts.VcfUtils
 import kotlinx.coroutines.launch
 import java.util.SortedMap
-import java.util.SortedSet
 import kotlin.io.encoding.Base64
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactList(
     viewModel: ContactViewModel,
-    backStack: NavBackStack<NavKey>,
+    backStack: NavBackStack<Route>,
     onContactClick: (Contact) -> Unit,
     onAddContactClick: () -> Unit
 ) {
@@ -101,8 +106,8 @@ fun ContactList(
     )
 
     val selectedID = when(backStack.last()) {
-        is ContactDetailsScreen -> (backStack.last() as ContactDetailsScreen).contactId
-        is EditContactScreen -> (backStack.last() as EditContactScreen).contactId
+        is Route.ContactDetail -> (backStack.last() as Route.ContactDetail).contactId
+        is Route.EditContact -> (backStack.last() as Route.EditContact).contactId
         else -> null
     }
 
@@ -120,7 +125,7 @@ fun ContactList(
         },
         contentWindowInsets = WindowInsets(),
         floatingActionButton = {
-            if(backStack.last() !is EditContactScreen) {
+            if(backStack.last() !is Route.EditContact) {
                 FloatingActionButton(onClick = { onAddContactClick() }) {
                     Icon(Icons.Default.Add, contentDescription = "Add contact")
                 }

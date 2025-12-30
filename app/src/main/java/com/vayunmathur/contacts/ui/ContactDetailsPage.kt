@@ -37,13 +37,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -57,12 +55,11 @@ import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.google.i18n.phonenumbers.NumberParseException
 import com.google.i18n.phonenumbers.PhoneNumberUtil
+import com.vayunmathur.contacts.ui.getAvatarColor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
@@ -83,7 +80,7 @@ fun ContactDetailsPage(
     val details = contact?.details
 
     if (contact == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
             Text("Contact not found")
         }
         return
@@ -144,10 +141,8 @@ fun ContactDetailsPage(
                     }
                     if(contact?.isProfile == false) {
                         IconButton(onClick = {
-                            scope.launch(Dispatchers.IO) {
-                                onDelete()
-                                viewModel.deleteContact(contact!!)
-                            }
+                            // Instead of deleting immediately, open the confirmation dialog via the onDelete callback
+                            onDelete()
                         }) {
                             Icon(
                                 painterResource(R.drawable.outline_delete_24),
@@ -164,7 +159,7 @@ fun ContactDetailsPage(
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         if (details == null) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                 CircularProgressIndicator()
             }
             return@Scaffold
@@ -176,7 +171,7 @@ fun ContactDetailsPage(
                 .padding(paddingValues),
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
         ) {
 
             item {
@@ -269,14 +264,14 @@ fun ContactDetailsPage(
 @Composable
 fun ProfileHeader(contact: Contact) {
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
         modifier = Modifier.padding(vertical = 16.dp)
     ) {
         Box(
             modifier = Modifier
                 .size(100.dp)
                 .clip(CircleShape),
-            contentAlignment = Alignment.Center
+            contentAlignment = androidx.compose.ui.Alignment.Center
         ) {
             contact.photo?.let {
                 val bitmap by remember(it) {
@@ -292,7 +287,7 @@ fun ProfileHeader(contact: Contact) {
                     modifier = Modifier
                         .fillMaxSize()
                         .background(getAvatarColor(contact.id)),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = androidx.compose.ui.Alignment.Center
                 ) {
                     Text(
                         text = contact.name.value.firstOrNull()?.uppercase()?:"",
@@ -341,7 +336,7 @@ fun ActionButtonsRow(number: String?, email: String?) {
             intent.data = "sms:$number".toUri()
             context.startActivity(intent)
         }
-        ActionButton(icon = painterResource(R.drawable.outline_videocam_24), label = "Video", showBadge = true, active = number != null) {
+        ActionButton(icon = painterResource(R.drawable.outline_videocam_24), label = "Video", active = number != null) {
 
         }
         ActionButton(icon = painterResource(R.drawable.outline_mail_24), label = "Email", active = email != null) {
@@ -357,12 +352,11 @@ fun ActionButtonsRow(number: String?, email: String?) {
 fun ActionButton(
     icon: Painter,
     label: String,
-    showBadge: Boolean = false,
     active: Boolean = true,
     action: () -> Unit
 ) {
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         BadgedBox(
@@ -374,7 +368,7 @@ fun ActionButton(
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .clickable { if(active) action() },
-                contentAlignment = Alignment.Center
+                contentAlignment = androidx.compose.ui.Alignment.Center
             ) {
                 Icon(
                     icon,

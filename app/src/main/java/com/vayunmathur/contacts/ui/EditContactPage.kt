@@ -26,8 +26,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,9 +38,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -60,25 +56,20 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.scale
 import androidx.navigation3.runtime.NavBackStack
-import androidx.navigation3.runtime.NavKey
 import com.google.i18n.phonenumbers.PhoneNumberUtil
+import com.vayunmathur.contacts.vutil.ResultEffect
+import com.vayunmathur.contacts.vutil.pop
 import kotlinx.datetime.LocalDate
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
-import kotlinx.datetime.toLocalDateTime
 import java.io.ByteArrayOutputStream
 import kotlin.io.encoding.Base64
-import kotlin.time.ExperimentalTime
-import kotlin.time.Instant
-import androidx.core.graphics.scale
-import kotlin.time.Clock
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel, contactId: Long?) {
+fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel, contactId: Long?) {
     val contact = remember { contactId?.let { viewModel.getContact(it) } }
     val details = contact?.details
     val context = LocalContext.current
@@ -115,14 +106,14 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
             TopAppBar(
                 title = { Text(if (contact == null) "Add contact" else "Edit contact") },
                 navigationIcon = {
-                    IconButton(onClick = { backStack.removeAt(backStack.lastIndex) }) {
+                    IconButton(onClick = { backStack.pop() }) {
                         Icon(painterResource(R.drawable.outline_close_24), contentDescription = "Close")
                     }
                 },
                 actions = {
                     Button(onClick = {
                         val birthdayID = contact?.birthday?.id
-                        val dates2 = dates.filter { it.type != CDKEvent.TYPE_BIRTHDAY }.toMutableList();
+                        val dates2 = dates.filter { it.type != CDKEvent.TYPE_BIRTHDAY }.toMutableList()
                         birthday?.let { birthday -> dates2 += Event(birthdayID ?: 0, birthday, CDKEvent.TYPE_BIRTHDAY) }
                         val details = ContactDetails(
                             phoneNumbers,
@@ -142,7 +133,7 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
                             details = details
                         )
                         viewModel.saveContact(newContact)
-                        backStack.removeAt(backStack.lastIndex)
+                        backStack.pop()
                     }) {
                         Text("Save")
                     }
@@ -229,9 +220,10 @@ fun EditContactPage(backStack: NavBackStack<NavKey>, viewModel: ContactViewModel
 
             Spacer(Modifier.height(16.dp))
 
-            Birthday(birthday) { birthday = it }
+            Birthday(backStack, birthday) { birthday = it }
 
             DateDetailsSection(
+                backStack,
                 dates,
                 painterResource(R.drawable.outline_event_24),
                 listOf(CDKEvent.TYPE_ANNIVERSARY, CDKEvent.TYPE_OTHER)
@@ -322,13 +314,16 @@ fun NameSuffixChooser(nameSuffix: String, onNameSuffixChange: (String) -> Unit) 
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalTime::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Birthday(
+    backStack: NavBackStack<Route>,
     birthday: LocalDate?,
     setBirthday: (LocalDate?) -> Unit
 ) {
-    var openDialog by remember { mutableStateOf(false) }
+    ResultEffect<LocalDate>("birthday") {
+        setBirthday(it)
+    }
     Box {
         OutlinedTextField(
             value = birthday?.format(LocalDate.Format {
@@ -356,42 +351,17 @@ private fun Birthday(
                 .matchParentSize()
         ) {
             Box(Modifier.fillMaxWidth(0.9f).fillMaxHeight()
-                .clickable { openDialog = true }){}
+                .clickable { backStack.add(Route.EventDatePickerDialog("birthday",birthday)) }){}
         }
     }
 
-    if (openDialog) {
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = (birthday?: Clock.System.now().toLocalDateTime(
-                TimeZone.currentSystemDefault()).date).atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds()
-        )
-        DatePickerDialog(
-            onDismissRequest = { openDialog = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let {
-                        setBirthday(Instant.fromEpochMilliseconds(it).toLocalDateTime(TimeZone.UTC).date)
-                    }
-                    openDialog = false
-                }) {
-                    Text("OK")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { openDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        ) {
-            DatePicker(state = datePickerState)
-        }
-    }
     Spacer(Modifier.height(8.dp))
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalTime::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ColumnScope.DateDetailsSection(
+    backStack: NavBackStack<Route>,
     details: SnapshotStateList<Event>,
     icon: Painter,
     options: List<Int>
@@ -400,8 +370,10 @@ private fun ColumnScope.DateDetailsSection(
     val context = LocalContext.current
     details.forEachIndexed { index, detail ->
         if(detail.type == CDKEvent.TYPE_BIRTHDAY) return@forEachIndexed
-        var openDialog by remember { mutableStateOf(false) }
         Box {
+            ResultEffect<LocalDate>(detail.id.toString()) {
+                details[index] = detail.withValue(it.toString())
+            }
             OutlinedTextField(
                 value = detail.startDate.format(LocalDate.Format {
                     monthName(MonthNames.ENGLISH_FULL)
@@ -451,35 +423,7 @@ private fun ColumnScope.DateDetailsSection(
                     .matchParentSize()
             ) {
                 Box(Modifier.fillMaxWidth(0.6f).fillMaxHeight()
-                    .clickable { openDialog = true }) {}
-            }
-        }
-
-        if (openDialog) {
-            val datePickerState = rememberDatePickerState(
-                initialSelectedDateMillis = detail.startDate.atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds()
-            )
-            DatePickerDialog(
-                onDismissRequest = { openDialog = false },
-                confirmButton = {
-                    TextButton(onClick = {
-                        datePickerState.selectedDateMillis?.let {
-                            details[index] = detail.withValue(
-                                Instant.fromEpochMilliseconds(it).toLocalDateTime(
-                                TimeZone.UTC).date.format(LocalDate.Formats.ISO))
-                        }
-                        openDialog = false
-                    }) {
-                        Text("OK")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { openDialog = false }) {
-                        Text("Cancel")
-                    }
-                }
-            ) {
-                DatePicker(state = datePickerState)
+                    .clickable { backStack.add(Route.EventDatePickerDialog(detail.id.toString(),detail.startDate)) }) {}
             }
         }
         Spacer(Modifier.height(8.dp))
