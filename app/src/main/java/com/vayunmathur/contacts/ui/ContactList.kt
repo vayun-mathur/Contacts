@@ -217,10 +217,16 @@ fun ContactListPick(mimeType: String?, contacts: List<Contact>, onClick: (Uri) -
 @Composable
 fun ContactItemPick(contact: Contact, mimeType: String?, onClick: (Uri) -> Unit) {
     if(mimeType == null || mimeType == ContactsContract.Contacts.CONTENT_ITEM_TYPE || mimeType == ContactsContract.Contacts.CONTENT_TYPE) {
-        ContactItem(contact, false, { onClick(Uri.withAppendedPath(
-            ContactsContract.Contacts.CONTENT_URI,
-            contact.id.toString()
-        )) })
+        ContactItem(contact, false, {
+            if(contact.isProfile)
+                onClick(Uri.withAppendedPath(
+                ContactsContract.Contacts.CONTENT_URI,
+                contact.id.toString()))
+            else
+                onClick(Uri.withAppendedPath(
+                    ContactsContract.RawContacts.CONTENT_URI,
+                    contact.id.toString()))
+        })
     } else {
         val details = contact.details
         val relevantList = when(mimeType) {
