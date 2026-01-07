@@ -92,8 +92,9 @@ object VcfUtils {
         }
     }
 
-    suspend fun importContacts(context: Context, inputStream: InputStream) {
-         withContext(Dispatchers.IO) {
+    // New: parse vCard stream into a list of Contact objects without saving them to the Contacts provider.
+    suspend fun parseContacts(inputStream: InputStream): List<Contact> {
+        return withContext(Dispatchers.IO) {
             val contactsToSave = mutableListOf<Contact>()
             val reader = inputStream.bufferedReader()
 
@@ -236,9 +237,17 @@ object VcfUtils {
                 }
             }
 
-            for (contact in contactsToSave) {
-                contact.save(context, contact.details, ContactDetails.empty())
-            }
+            contactsToSave
+        }
+    }
+
+    suspend fun importContacts(context: Context, inputStream: InputStream) {
+         // Use the shared parser and then persist the parsed contacts
+         val contactsToSave = parseContacts(inputStream)
+         withContext(Dispatchers.IO) {
+             for (contact in contactsToSave) {
+                 contact.save(context, contact.details, ContactDetails.empty())
+             }
          }
     }
 
