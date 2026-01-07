@@ -36,7 +36,6 @@ import com.vayunmathur.contacts.ui.ContactList
 import com.vayunmathur.contacts.ui.ContactListPick
 import com.vayunmathur.contacts.ui.dialog.EventDatePickerDialog
 import com.vayunmathur.contacts.ui.dialog.EventDeleteConfirmDialog
-import com.vayunmathur.contacts.ui.dialog.EventImportContactsDialog
 import com.vayunmathur.contacts.ui.theme.ContactsTheme
 import com.vayunmathur.contacts.vutil.MainNavigation
 import com.vayunmathur.contacts.vutil.pop
@@ -57,7 +56,6 @@ class MainActivity : ComponentActivity() {
                     NoPermissionsScreen(permissions) { hasPermissions = it }
                 } else {
                     val viewModel: ContactViewModel = viewModel()
-
                     // If the app was launched with ACTION_PICK/GET_CONTENT, forward to the picker flow (same as before).
                     if (intent.action == Intent.ACTION_PICK || intent.action == Intent.ACTION_GET_CONTENT) {
                         var type = intent.type
@@ -74,10 +72,7 @@ class MainActivity : ComponentActivity() {
                             finish()
                         }
                     } else {
-                        // Otherwise, compute an import URI string if the Activity was launched with a vCard URI,
-                        // and start the normal navigation, optionally pushing the import-dialog route on top.
-                        val importUriString = remember { intent?.let { if ((it.scheme == "content" || it.scheme == "file") && it.type?.contains("vcard") == true && it.data != null) it.data.toString() else null } }
-                        Navigation(viewModel, importUriString)
+                        Navigation(viewModel)
                     }
                 }
             }
@@ -112,15 +107,8 @@ fun NoPermissionsScreen(permissions: Array<String>, setHasPermissions: (Boolean)
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun Navigation(viewModel: ContactViewModel, importUriString: String?) {
+fun Navigation(viewModel: ContactViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.ContactsList)
-
-    // If importUriString is present, push the import dialog route on top of ContactsList
-    LaunchedEffect(Unit) {
-        if (importUriString != null) {
-            backStack.add(Route.EventImportContactsDialog(importUriString))
-        }
-    }
 
     MainNavigation(backStack) {
         entry<Route.ContactsList>(metadata = ListDetailSceneStrategy.listPane(detailPlaceholder = {
@@ -178,13 +166,6 @@ fun Navigation(viewModel: ContactViewModel, importUriString: String?) {
                 backStack.pop()
             })
         }
-
-        entry<Route.EventImportContactsDialog>(metadata = DialogSceneStrategy.dialog()) { key ->
-            EventImportContactsDialog(key.uriString, viewModel, onConfirm = {
-                // After confirming import, close the dialog
-                backStack.pop()
-            }, onDismiss = { backStack.pop() })
-        }
     }
 }
 
@@ -203,7 +184,4 @@ sealed interface Route: NavKey {
 
     @Serializable
     data class EventDeleteConfirmDialog(val contactId: Long, val contactName: String?): Route
-
-    @Serializable
-    data class EventImportContactsDialog(val uriString: String): Route
 }
