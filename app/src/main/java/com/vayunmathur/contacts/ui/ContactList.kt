@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -62,7 +63,9 @@ import com.vayunmathur.contacts.ContactViewModel
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.Route
 import com.vayunmathur.contacts.VcfUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.SortedMap
 import kotlin.io.encoding.Base64
 
@@ -76,13 +79,13 @@ fun ContactList(
 ) {
     val contacts by viewModel.contacts.collectAsState()
 
-    val (profiles, mainContacts) = contacts.partition { it.isProfile }
-
-    val (favorites, otherContacts) = mainContacts.partition { it.isFavorite }
-
-    val groupedContacts: SortedMap<Char, List<Contact>> = otherContacts
-        .groupBy { it.name.value.first().uppercaseChar() }.mapValues { (_, contacts) -> contacts.sortedBy { it.name.value } }
-        .toSortedMap()
+    val (profiles, mainContacts) = remember(contacts) { contacts.partition { it.isProfile } }
+    val (favorites, otherContacts) = remember(mainContacts) { mainContacts.partition { it.isFavorite } }
+    val groupedContacts: SortedMap<Char, List<Contact>> = remember(otherContacts) {
+        otherContacts.groupBy { it.name.value.first().uppercaseChar() }
+            .mapValues { (_, c) -> c.sortedBy { it.name.value } }
+            .toSortedMap()
+    }
 
 
     val context = LocalContext.current
@@ -329,6 +332,17 @@ fun ContactItem(
     } else {
         Modifier
     }
+
+    val photoBase64 = contact.photo?.photo
+    val avatarBitmap by produceState<Bitmap?>(initialValue = null, photoBase64) {
+        if (photoBase64 != null) {
+            value = withContext(Dispatchers.IO) {
+                val bytes = Base64.decode(photoBase64)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            }
+        }
+    }
+
     Column {
         val hasDropdown = dropdownList != null && dropdownList.isNotEmpty()
         ListItem(
@@ -348,16 +362,7 @@ fun ContactItem(
                     modifier = Modifier.size(50.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    contact.photo?.let {
-                        val bitmap by remember(it) {
-                            mutableStateOf<Bitmap>(
-                                BitmapFactory.decodeByteArray(
-                                    Base64.decode(it.photo),
-                                    0,
-                                    Base64.decode(it.photo).size
-                                )
-                            )
-                        }
+                    avatarBitmap?.let { bitmap ->
                         Image(
                             bitmap = bitmap.asImageBitmap(),
                             contentDescription = "${contact.name} photo",
