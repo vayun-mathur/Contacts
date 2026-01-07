@@ -93,152 +93,150 @@ object VcfUtils {
     }
 
     // New: parse vCard stream into a list of Contact objects without saving them to the Contacts provider.
-    suspend fun parseContacts(inputStream: InputStream): List<Contact> {
-        return withContext(Dispatchers.IO) {
-            val contactsToSave = mutableListOf<Contact>()
-            val reader = inputStream.bufferedReader()
+    fun parseContacts(inputStream: InputStream): List<Contact> {
+        val contactsToSave = mutableListOf<Contact>()
+        val reader = inputStream.bufferedReader()
 
-            // Read and unfold folded lines (lines starting with space or tab continue previous)
-            val rawLines = reader.readLines()
-            val unfolded = mutableListOf<String>()
-            var bufferLine: String? = null
-            for (ln in rawLines) {
-                if (ln.startsWith(" ") || ln.startsWith("\t")) {
-                    bufferLine = (bufferLine ?: "") + ln.trimStart()
-                } else {
-                    if (bufferLine != null) unfolded.add(bufferLine)
-                    bufferLine = ln
-                }
+        // Read and unfold folded lines (lines starting with space or tab continue previous)
+        val rawLines = reader.readLines()
+        val unfolded = mutableListOf<String>()
+        var bufferLine: String? = null
+        for (ln in rawLines) {
+            if (ln.startsWith(" ") || ln.startsWith("\t")) {
+                bufferLine = (bufferLine ?: "") + ln.trimStart()
+            } else {
+                if (bufferLine != null) unfolded.add(bufferLine)
+                bufferLine = ln
             }
-            if (bufferLine != null) unfolded.add(bufferLine)
-
-            var currentContact: ContactBuilder? = null
-
-            for (raw in unfolded) {
-                val line = raw.trimEnd()
-                if (line.isEmpty()) continue
-                if (line.startsWith("BEGIN:VCARD", ignoreCase = true)) {
-                    currentContact = ContactBuilder()
-                    continue
-                }
-                if (line.startsWith("END:VCARD", ignoreCase = true)) {
-                    currentContact?.let { builder ->
-                        val details = ContactDetails(
-                            phoneNumbers = builder.phones.toList(),
-                            emails = builder.emails.toList(),
-                            addresses = builder.addresses.toList(),
-                            dates = builder.dates.toList(),
-                            photos = builder.photos.toList(),
-                            names = builder.names.toList(),
-                            orgs = builder.orgs.toList(),
-                            notes = builder.notes.toList(),
-                            nicknames = builder.nicknames.toList()
-                        )
-                        val newContact = Contact(
-                            false,
-                            id = 0L,
-                            isFavorite = false,
-                            details
-                        )
-                        contactsToSave.add(newContact)
-                    }
-                    currentContact = null
-                    continue
-                }
-
-                if (currentContact == null) continue
-
-                // Parse property line: NAME[;PARAMS]:VALUE
-                val colonIndex = line.indexOf(':')
-                if (colonIndex == -1) continue
-                val nameAndParams = line.substring(0, colonIndex)
-                val valuePart = line.substring(colonIndex + 1)
-
-                val segments = nameAndParams.split(';')
-                val propName = segments.firstOrNull()?.uppercase() ?: continue
-                val params = parseParams(segments.drop(1))
-
-                // Handle QUOTED-PRINTABLE decoding
-                val encodingVals = params["ENCODING"] ?: params["ENCOD"]
-                val isQP = encodingVals?.any { it.equals("QUOTED-PRINTABLE", ignoreCase = true) } == true
-                val charsetName = params["CHARSET"]?.firstOrNull() ?: params["CHARSET*"]?.firstOrNull()
-                val value = if (isQP) decodeQuotedPrintable(valuePart, charsetName ?: "UTF-8") else valuePart
-
-                when (propName) {
-                    "N" -> {
-                        // family;given;additional;prefix;suffix
-                        val comps = value.split(';')
-                        val family = comps.getOrNull(0) ?: ""
-                        val given = comps.getOrNull(1) ?: ""
-                        val additional = comps.getOrNull(2) ?: ""
-                        val prefix = comps.getOrNull(3) ?: ""
-                        val suffix = comps.getOrNull(4) ?: ""
-                        currentContact.names.clear()
-                        currentContact.names.add(Name(0, prefix, given, additional, family, suffix))
-                    }
-                    "FN" -> {
-                        if (currentContact.names.isEmpty()) {
-                            val display = value
-                            val first = display.split(" ").firstOrNull() ?: display
-                            val last = display.split(" ").drop(1).joinToString(" ")
-                            currentContact.names.add(Name(0, "", first, "", last, ""))
-                        }
-                    }
-                    "TEL" -> {
-                        val ttype = detectPhoneType(params)
-                        currentContact.phones.add(PhoneNumber(0, value, ttype))
-                    }
-                    "EMAIL" -> {
-                        val etype = detectEmailType(params)
-                        currentContact.emails.add(Email(0, value, etype))
-                    }
-                    "ADR" -> {
-                        // ADR components: POBox;Extended;Street;City;Region;PostalCode;Country
-                        val comps = value.split(';')
-                        val street = comps.getOrNull(2) ?: ""
-                        val city = comps.getOrNull(3) ?: ""
-                        val region = comps.getOrNull(4) ?: ""
-                        val postal = comps.getOrNull(5) ?: ""
-                        val country = comps.getOrNull(6) ?: ""
-                        val formatted = listOfNotNull(street.ifEmpty { null }, city.ifEmpty { null }, region.ifEmpty { null }, postal.ifEmpty { null }, country.ifEmpty { null }).joinToString(", ")
-                        val atype = if (params["TYPE"]?.any { it.equals("HOME", ignoreCase = true) } == true) ContactsContract.CommonDataKinds.StructuredPostal.TYPE_HOME else ContactsContract.CommonDataKinds.StructuredPostal.TYPE_WORK
-                        currentContact.addresses.add(Address(0, formatted, atype))
-                    }
-                    "ORG" -> {
-                        currentContact.orgs.clear()
-                        currentContact.orgs.add(Organization(0, value))
-                    }
-                    "BDAY" -> {
-                        var dv = value
-                        if (dv.matches(Regex("^\\d{8}"))) {
-                            dv = dv.substring(0,4) + "-" + dv.substring(4,6) + "-" + dv.substring(6,8)
-                        }
-                        try {
-                            val date = LocalDate.parse(dv)
-                            currentContact.dates.add(Event(0, date, ContactsContract.CommonDataKinds.Event.TYPE_BIRTHDAY))
-                        } catch (_: Exception) {
-                            // ignore invalid date
-                        }
-                    }
-                    "NOTE" -> {
-                        currentContact.notes.add(Note(0, value))
-                    }
-                    "PHOTO" -> {
-                        // Keep base64 string as-is
-                        currentContact.photos.add(Photo(0, value))
-                    }
-                    "URL" -> {
-                        // No dedicated website field - append URL to notes
-                        currentContact.notes.add(Note(0, value))
-                    }
-                    else -> {
-                        // ignore unknown properties
-                    }
-                }
-            }
-
-            contactsToSave
         }
+        if (bufferLine != null) unfolded.add(bufferLine)
+
+        var currentContact: ContactBuilder? = null
+
+        for (raw in unfolded) {
+            val line = raw.trimEnd()
+            if (line.isEmpty()) continue
+            if (line.startsWith("BEGIN:VCARD", ignoreCase = true)) {
+                currentContact = ContactBuilder()
+                continue
+            }
+            if (line.startsWith("END:VCARD", ignoreCase = true)) {
+                currentContact?.let { builder ->
+                    val details = ContactDetails(
+                        phoneNumbers = builder.phones.toList(),
+                        emails = builder.emails.toList(),
+                        addresses = builder.addresses.toList(),
+                        dates = builder.dates.toList(),
+                        photos = builder.photos.toList(),
+                        names = builder.names.toList(),
+                        orgs = builder.orgs.toList(),
+                        notes = builder.notes.toList(),
+                        nicknames = builder.nicknames.toList()
+                    )
+                    val newContact = Contact(
+                        false,
+                        id = 0L,
+                        isFavorite = false,
+                        details
+                    )
+                    contactsToSave.add(newContact)
+                }
+                currentContact = null
+                continue
+            }
+
+            if (currentContact == null) continue
+
+            // Parse property line: NAME[;PARAMS]:VALUE
+            val colonIndex = line.indexOf(':')
+            if (colonIndex == -1) continue
+            val nameAndParams = line.substring(0, colonIndex)
+            val valuePart = line.substring(colonIndex + 1)
+
+            val segments = nameAndParams.split(';')
+            val propName = segments.firstOrNull()?.uppercase() ?: continue
+            val params = parseParams(segments.drop(1))
+
+            // Handle QUOTED-PRINTABLE decoding
+            val encodingVals = params["ENCODING"] ?: params["ENCOD"]
+            val isQP = encodingVals?.any { it.equals("QUOTED-PRINTABLE", ignoreCase = true) } == true
+            val charsetName = params["CHARSET"]?.firstOrNull() ?: params["CHARSET*"]?.firstOrNull()
+            val value = if (isQP) decodeQuotedPrintable(valuePart, charsetName ?: "UTF-8") else valuePart
+
+            when (propName) {
+                "N" -> {
+                    // family;given;additional;prefix;suffix
+                    val comps = value.split(';')
+                    val family = comps.getOrNull(0) ?: ""
+                    val given = comps.getOrNull(1) ?: ""
+                    val additional = comps.getOrNull(2) ?: ""
+                    val prefix = comps.getOrNull(3) ?: ""
+                    val suffix = comps.getOrNull(4) ?: ""
+                    currentContact.names.clear()
+                    currentContact.names.add(Name(0, prefix, given, additional, family, suffix))
+                }
+                "FN" -> {
+                    if (currentContact.names.isEmpty()) {
+                        val display = value
+                        val first = display.split(" ").firstOrNull() ?: display
+                        val last = display.split(" ").drop(1).joinToString(" ")
+                        currentContact.names.add(Name(0, "", first, "", last, ""))
+                    }
+                }
+                "TEL" -> {
+                    val ttype = detectPhoneType(params)
+                    currentContact.phones.add(PhoneNumber(0, value, ttype))
+                }
+                "EMAIL" -> {
+                    val etype = detectEmailType(params)
+                    currentContact.emails.add(Email(0, value, etype))
+                }
+                "ADR" -> {
+                    // ADR components: POBox;Extended;Street;City;Region;PostalCode;Country
+                    val comps = value.split(';')
+                    val street = comps.getOrNull(2) ?: ""
+                    val city = comps.getOrNull(3) ?: ""
+                    val region = comps.getOrNull(4) ?: ""
+                    val postal = comps.getOrNull(5) ?: ""
+                    val country = comps.getOrNull(6) ?: ""
+                    val formatted = listOfNotNull(street.ifEmpty { null }, city.ifEmpty { null }, region.ifEmpty { null }, postal.ifEmpty { null }, country.ifEmpty { null }).joinToString(", ")
+                    val atype = if (params["TYPE"]?.any { it.equals("HOME", ignoreCase = true) } == true) ContactsContract.CommonDataKinds.StructuredPostal.TYPE_HOME else ContactsContract.CommonDataKinds.StructuredPostal.TYPE_WORK
+                    currentContact.addresses.add(Address(0, formatted, atype))
+                }
+                "ORG" -> {
+                    currentContact.orgs.clear()
+                    currentContact.orgs.add(Organization(0, value))
+                }
+                "BDAY" -> {
+                    var dv = value
+                    if (dv.matches(Regex("^\\d{8}"))) {
+                        dv = dv.substring(0,4) + "-" + dv.substring(4,6) + "-" + dv.substring(6,8)
+                    }
+                    try {
+                        val date = LocalDate.parse(dv)
+                        currentContact.dates.add(Event(0, date, ContactsContract.CommonDataKinds.Event.TYPE_BIRTHDAY))
+                    } catch (_: Exception) {
+                        // ignore invalid date
+                    }
+                }
+                "NOTE" -> {
+                    currentContact.notes.add(Note(0, value))
+                }
+                "PHOTO" -> {
+                    // Keep base64 string as-is
+                    currentContact.photos.add(Photo(0, value))
+                }
+                "URL" -> {
+                    // No dedicated website field - append URL to notes
+                    currentContact.notes.add(Note(0, value))
+                }
+                else -> {
+                    // ignore unknown properties
+                }
+            }
+        }
+
+        return contactsToSave
     }
 
     suspend fun importContacts(context: Context, inputStream: InputStream) {

@@ -23,8 +23,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -34,10 +37,17 @@ class ImportActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val uri = intent.data ?: return
+
+        val contacts = contentResolver.openInputStream(uri)?.use { stream ->
+            VcfUtils.parseContacts(stream)
+        } ?: emptyList()
+
         setContent {
             ContactsTheme {
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    ImportScreen(intent) {
+                    ImportScreen(contacts) {
+                        contacts.forEach { it.save(this@ImportActivity, it.details, ContactDetails.empty()) }
                         startActivity(Intent(this, MainActivity::class.java))
                     }
                 }
@@ -48,24 +58,7 @@ class ImportActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @androidx.compose.runtime.Composable
-fun ImportScreen(intent: Intent?, onImport: () -> Unit) {
-    val contacts = remember { mutableStateListOf<Contact>() }
-    val context = LocalContext.current
-
-    LaunchedEffect(intent) {
-        intent?.data?.let { uri ->
-            try {
-                val parsed = context.contentResolver.openInputStream(uri)?.use { stream ->
-                    VcfUtils.parseContacts(stream)
-                } ?: emptyList()
-                contacts.clear()
-                contacts.addAll(parsed)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
+fun ImportScreen(contacts: List<Contact>, onImport: () -> Unit) {
     Scaffold(
         topBar = { TopAppBar({Text("Import Contacts")}) },
         floatingActionButton = {
