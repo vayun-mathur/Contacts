@@ -26,8 +26,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -130,7 +128,7 @@ fun ContactList(
         floatingActionButton = {
             if(backStack.last() !is Route.EditContact) {
                 FloatingActionButton(onClick = { onAddContactClick() }) {
-                    Icon(Icons.Default.Add, contentDescription = "Add contact")
+                    Icon(painterResource(R.drawable.add_24px), contentDescription = "Add contact")
                 }
             }
         }
