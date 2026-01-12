@@ -519,11 +519,39 @@ fun getDetails(context: Context, id: Long, isProfile: Boolean = false): ContactD
         Email(id, email, type)
     }
 
-    val addresses = queryData(listOf(CDKStructuredPostal._ID, CDKStructuredPostal.FORMATTED_ADDRESS, CDKStructuredPostal.TYPE), CDKStructuredPostal.CONTENT_ITEM_TYPE) {
-        val id = it.getLong(it.getColumnIndexOrThrow(CDKStructuredPostal._ID))
-        val address = it.getString(it.getColumnIndexOrThrow(CDKStructuredPostal.FORMATTED_ADDRESS))
-        val type = it.getInt(it.getColumnIndexOrThrow(CDKStructuredPostal.TYPE))
-        Address(id, address, type)
+    val projection = listOf(
+        CDKStructuredPostal._ID,
+        CDKStructuredPostal.FORMATTED_ADDRESS,
+        CDKStructuredPostal.TYPE,
+        CDKStructuredPostal.STREET,
+        CDKStructuredPostal.CITY,
+        CDKStructuredPostal.REGION,
+        CDKStructuredPostal.POSTCODE,
+        CDKStructuredPostal.COUNTRY
+    )
+
+    val addresses = queryData(projection, CDKStructuredPostal.CONTENT_ITEM_TYPE) { cursor ->
+        val id = cursor.getLong(cursor.getColumnIndexOrThrow(CDKStructuredPostal._ID))
+        val type = cursor.getInt(cursor.getColumnIndexOrThrow(CDKStructuredPostal.TYPE))
+
+        // 2. Attempt to get the formatted address
+        var formatted = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(CDKStructuredPostal.FORMATTED_ADDRESS))
+
+        // 3. Fallback logic: if formatted is null, build it from parts
+        if (formatted.isNullOrBlank()) {
+            val street = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(CDKStructuredPostal.STREET))
+            val city = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(CDKStructuredPostal.CITY))
+            val region = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(CDKStructuredPostal.REGION))
+            val code = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(CDKStructuredPostal.POSTCODE))
+            val country = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(CDKStructuredPostal.COUNTRY))
+
+            // Join non-null components with a comma or newline
+            formatted = listOfNotNull(street, city, region, code, country)
+                .filter { it.isNotBlank() }
+                .joinToString(", ")
+        }
+
+        Address(id, formatted, type)
     }
 
     // Dates
